@@ -311,6 +311,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                 labelText: 'Tipo',
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    isDense: true, 
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),

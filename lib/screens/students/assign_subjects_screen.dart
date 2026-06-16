@@ -64,7 +64,6 @@ Future<void> _loadData() async {
       _students = studentProvider.activeStudents;
       _subjects = subjectProvider.activeSubjects;
       
-      // ACTUALIZAR: Refrescar estudiante actual con datos nuevos
       if (_currentStudent != null) {
         _currentStudent = _students.firstWhere(
           (s) => s.id == _currentStudent!.id,
@@ -290,7 +289,7 @@ Future<void> _loadData() async {
       itemBuilder: (context, index) {
         final subject = _subjects[index];
         final isCurrentlyAssigned = _currentStudent!.isAssignedToSubject(subject.id);
-        final pendingKey = '${_currentStudent!.id}|||${subject.id}'; // Separador único
+        final pendingKey = '${_currentStudent!.id}|||${subject.id}';
         final hasPendingChange = _pendingChanges.containsKey(pendingKey);
         final finalState = hasPendingChange ? _pendingChanges[pendingKey]! : isCurrentlyAssigned;
 
@@ -324,16 +323,15 @@ Future<void> _loadData() async {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
-                Row(
+                // ← CAMBIO: Wrap en lugar de Row para evitar overflow
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
-                    if (subject.difficulty != null) ...[
+                    if (subject.difficulty != null)
                       _buildInfoChip(subject.difficulty!, Icons.signal_cellular_alt),
-                      const SizedBox(width: 8),
-                    ],
-                    if (subject.formattedDuration.isNotEmpty) ...[
+                    if (subject.formattedDuration.isNotEmpty)
                       _buildInfoChip(subject.formattedDuration, Icons.schedule),
-                      const SizedBox(width: 8),
-                    ],
                     if (hasPendingChange)
                       _buildInfoChip(
                         finalState ? 'A asignar' : 'A desasignar',
