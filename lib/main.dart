@@ -50,10 +50,9 @@ try {
   if (usersSnapshot.docs.isNotEmpty) return;
 } on FirebaseException catch (e) {
   if (e.code == 'permission-denied') {
-    // Primera vez — no hay usuarios, continuar con la creación
-  } else {
-    return; // Otro error, no hacer nada
-  }
+    return;
+  } 
+  return;
 }
 
   final testUsers = [
