@@ -10,7 +10,9 @@ import '../../models/user.dart';
 import '../../models/subject.dart';
 import '../../utils/app_theme.dart';
 import '../subjects/subjects_screen.dart';
+import '../subjects/ver_materias_screen.dart';
 import '../students/students_screen.dart';
+import '../students/ver_estudiantes_screen.dart';
 import '../students/assign_subjects_screen.dart';
 import '../questions/questions_screen.dart';
 import '../questions/ai_generate_screen.dart';
@@ -129,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ─────────────────────────────────────────────
-  // PARENT DASHBOARD — Nuevo diseño
+  // PARENT DASHBOARD
   // ─────────────────────────────────────────────
 
   Widget _buildParentDashboard(User user, AuthProvider authProvider) {
@@ -138,16 +140,12 @@ class _HomeScreenState extends State<HomeScreen> {
           child) {
         final subjectCount = subjectProvider.activeSubjects.length;
         final studentCount = studentProvider.activeStudents.length;
-
-        // Total preguntas de todas las materias
-        final questionCount =
-            questionProvider.stats?.totalQuestions ?? 0;
+        final questionCount = questionProvider.stats?.totalQuestions ?? 0;
 
         return SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header verde con stats
               _buildParentHeader(
                 user: user,
                 authProvider: authProvider,
@@ -155,17 +153,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 studentCount: studentCount,
                 questionCount: questionCount,
               ),
-
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Card de Progreso destacada
                     _buildProgressCard(studentCount),
                     const SizedBox(height: 20),
-
-                    // ── Acciones
                     Text(
                       'ACCIONES',
                       style: TextStyle(
@@ -176,53 +170,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-
                     GridView.count(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       crossAxisCount: 2,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
-                      childAspectRatio: 1.3,
+                      childAspectRatio: 1.0,
                       children: [
                         _buildNewActionCard(
                           title: 'Mis Materias',
                           subtitle: 'Crear y editar',
-                          icon: Icons.library_books,
-                          color: Colors.blue[700]!,
-                          bgColor: Colors.blue[50]!,
+                          iconAsset: 'assets/icons/books.gif',
+                          bgColor: const Color(0xFFBBDEFB),
                           onTap: _navigateToSubjects,
                         ),
                         _buildNewActionCard(
                           title: 'Estudiantes',
                           subtitle: 'Gestionar perfiles',
-                          icon: Icons.people,
-                          color: Colors.purple[700]!,
-                          bgColor: Colors.purple[50]!,
+                          iconAsset: 'assets/icons/family-members.gif',
+                          bgColor: const Color(0xFFE1BEE7),
                           onTap: _navigateToStudents,
                         ),
                         _buildNewActionCard(
                           title: 'Preguntas',
                           subtitle: 'Banco + IA',
-                          icon: Icons.quiz,
-                          color: Colors.orange[700]!,
-                          bgColor: Colors.orange[50]!,
+                          iconAsset: 'assets/icons/opinion.gif',
+                          bgColor: const Color(0xFFFFCC80),
                           onTap: _navigateToQuestions,
                         ),
                         _buildNewActionCard(
                           title: 'Asignar',
                           subtitle: 'Materias a alumnos',
-                          icon: Icons.assignment,
-                          color: AppTheme.parentColor,
-                          bgColor: Colors.green[50]!,
+                          iconAsset: 'assets/icons/moodboard.gif',
+                          bgColor: const Color(0xFFA5D6A7),
                           onTap: _navigateToAssignSubjects,
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 12),
-
-                    // ── Banner IA
                     _buildAIBanner(subjectProvider.activeSubjects),
                   ],
                 ),
@@ -304,8 +290,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 20),
-
-          // Stats
           Row(
             children: [
               _buildStatBadge('$subjectCount', 'Materias'),
@@ -323,27 +307,28 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildStatBadge(String value, String label) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
           children: [
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.parentColor,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 11,
-                color: Colors.white.withOpacity(0.85),
+                color: Color(0xFF5A7A5C),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -405,11 +390,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Card de acción — ícono GIF con color natural, contenedor pastel fuerte
   Widget _buildNewActionCard({
     required String title,
     required String subtitle,
-    required IconData icon,
-    required Color color,
+    required String iconAsset,
     required Color bgColor,
     required VoidCallback onTap,
   }) {
@@ -424,33 +409,42 @@ class _HomeScreenState extends State<HomeScreen> {
           border: Border.all(color: Colors.grey[200]!),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 color: bgColor,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: color, size: 20),
+              clipBehavior: Clip.antiAlias,
+              padding: const EdgeInsets.all(8),
+              child: Image.asset(
+                iconAsset,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.image_not_supported,
+                  size: 32,
+                  color: Colors.grey,
+                ),
+              ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                ),
-              ],
+            const SizedBox(height: 10),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -458,6 +452,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Banner IA — degradado verde-azul, coherente con la paleta de la app
   Widget _buildAIBanner(List<Subject> subjects) {
     return InkWell(
       onTap: () => _showAISubjectPicker(subjects),
@@ -465,9 +460,12 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.pink[50],
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1B5E20), Color(0xFF1565C0)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.pink[200]!),
         ),
         child: Row(
           children: [
@@ -475,14 +473,14 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: Colors.pink[100],
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.auto_awesome,
-                  color: Colors.pink[700], size: 20),
+              child: const Icon(Icons.auto_awesome,
+                  color: Colors.white, size: 20),
             ),
             const SizedBox(width: 12),
-            Expanded(
+            const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -491,19 +489,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: Colors.pink[900],
+                      color: Colors.white,
                     ),
                   ),
                   Text(
                     'Groq + Gemini disponibles',
-                    style:
-                        TextStyle(fontSize: 11, color: Colors.pink[700]),
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios,
-                size: 14, color: Colors.pink[700]),
+            const Icon(Icons.arrow_forward_ios,
+                size: 14, color: Colors.white),
           ],
         ),
       ),
@@ -538,11 +535,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: Colors.pink[50],
+                    color: Colors.blue[50],
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(Icons.auto_awesome,
-                      color: Colors.pink[700], size: 18),
+                      color: AppTheme.parentColor, size: 18),
                 ),
                 const SizedBox(width: 10),
                 const Text(
@@ -794,6 +791,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // BOTTOM NAVIGATION
+  // ─────────────────────────────────────────────
+
   Widget? _buildBottomNavigation(User user) {
     List<BottomNavigationBarItem> items = [];
 
@@ -809,15 +810,17 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.settings), label: 'Config'),
       ];
     } else if (user.isParent) {
+      // MODIFICADO: la barra inferior ahora es de SOLO CONSULTA,
+      // distinta de las acciones de gestión del grid central
       items = [
         const BottomNavigationBarItem(
             icon: Icon(Icons.home), label: 'Inicio'),
         const BottomNavigationBarItem(
-            icon: Icon(Icons.subject), label: 'Materias'),
+            icon: Icon(Icons.menu_book), label: 'Ver Materias'),
         const BottomNavigationBarItem(
-            icon: Icon(Icons.people), label: 'Estudiantes'),
+            icon: Icon(Icons.remove_red_eye), label: 'Ver Estudiantes'),
         const BottomNavigationBarItem(
-            icon: Icon(Icons.assignment), label: 'Asignar'),
+            icon: Icon(Icons.bar_chart), label: 'Progreso'),
       ];
     } else if (user.isStudent) {
       items = [
@@ -854,14 +857,17 @@ class _HomeScreenState extends State<HomeScreen> {
         } else if (user.isParent) {
           switch (index) {
             case 1:
-              _navigateToSubjects();
+              _navigateToVerMaterias();
               break;
             case 2:
-              _navigateToStudents();
+              _navigateToVerEstudiantes();
               break;
             case 3:
-              _navigateToAssignSubjects();
+              _navigateToParentResults();
               break;
+          }
+          if (index != 0) {
+            setState(() => _selectedIndex = 0);
           }
         } else if (user.isStudent) {
           switch (index) {
@@ -878,6 +884,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
       type: BottomNavigationBarType.fixed,
+      selectedFontSize: 10,
+      unselectedFontSize: 10,
       items: items,
     );
   }
@@ -895,7 +903,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ─────────────────────────────────────────────
-  // NAVEGACIÓN
+  // NAVEGACIÓN — Gestión (desde el grid de acciones)
   // ─────────────────────────────────────────────
 
   void _navigateToSubjects() => Navigator.push(context,
@@ -921,6 +929,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _navigateToParentResults() => Navigator.push(context,
       MaterialPageRoute(builder: (_) => const ParentResultsScreen()));
+
+  // ─────────────────────────────────────────────
+  // NAVEGACIÓN — Consulta (desde la barra inferior, solo lectura)
+  // ─────────────────────────────────────────────
+
+  void _navigateToVerMaterias() => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => const VerMateriasScreen()));
+
+  void _navigateToVerEstudiantes() => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => const VerEstudiantesScreen()));
 
   void _showLogoutDialog(AuthProvider authProvider) {
     showDialog(
