@@ -8,10 +8,11 @@ import '../../providers/subject_provider.dart';
 import '../../models/question.dart';
 import '../../models/subject.dart';
 import '../../utils/app_theme.dart';
+import 'ai_generate_screen.dart';
 import 'question_form_screen.dart';
 
 class QuestionsScreen extends StatefulWidget {
-  final String? subjectId; // Opcional: filtrar por materia
+  final String? subjectId;
 
   const QuestionsScreen({
     super.key,
@@ -50,15 +51,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     final userId = authProvider.currentUser!.id;
     final userRole = authProvider.currentUser!.role.toString().split('.').last;
 
-    // Cargar materias primero
     await subjectProvider.loadSubjects(userId, userRole);
 
     if (widget.subjectId != null) {
-      // Si viene con materia específica
       _selectedSubject = subjectProvider.getSubjectById(widget.subjectId!);
       await questionProvider.loadQuestionsBySubject(widget.subjectId!);
     } else if (subjectProvider.activeSubjects.isNotEmpty) {
-      // Seleccionar primera materia por defecto
       _selectedSubject = subjectProvider.activeSubjects.first;
       await questionProvider.loadQuestionsBySubject(_selectedSubject!.id);
     }
@@ -130,11 +128,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.book_outlined,
-            size: 64,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.book_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           const Text(
             'Necesitas crear materias primero',
@@ -199,10 +193,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               children: [
                 Text(
                   'Materia:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 DropdownButton<Subject>(
                   value: _selectedSubject,
@@ -211,8 +202,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color:
-                        _selectedSubject?.color.color ?? AppTheme.primaryColor,
+                    color: _selectedSubject?.color.color ?? AppTheme.primaryColor,
                   ),
                   items: subjectProvider.activeSubjects.map((subject) {
                     return DropdownMenuItem(
@@ -250,7 +240,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                         _filterType = null;
                         _filterDifficulty = null;
                       });
-
                       final questionProvider = context.read<QuestionProvider>();
                       await questionProvider.loadQuestionsBySubject(subject.id);
                     }
@@ -307,11 +296,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           Expanded(
             child: DropdownButtonFormField<QuestionType?>(
               value: _filterType,
+              isExpanded: true,
               decoration: InputDecoration(
                 labelText: 'Tipo',
+                isDense: true,
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    isDense: true, 
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -320,10 +310,17 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                 ...QuestionType.values.map((type) => DropdownMenuItem(
                       value: type,
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(type.icon, size: 16, color: type.color),
-                          const SizedBox(width: 8),
-                          Text(type.displayName),
+                          const SizedBox(width: 4),
+                          // ← FIX: Flexible evita overflow cuando el texto es largo
+                          Flexible(
+                            child: Text(
+                              type.displayName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
                     )),
@@ -348,10 +345,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           Expanded(
             child: DropdownButtonFormField<QuestionDifficulty?>(
               value: _filterDifficulty,
+              isExpanded: true,
               decoration: InputDecoration(
                 labelText: 'Dificultad',
+                isDense: true,
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -360,6 +359,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                 ...QuestionDifficulty.values.map((diff) => DropdownMenuItem(
                       value: diff,
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
                             width: 12,
@@ -369,8 +369,13 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                               shape: BoxShape.circle,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(diff.displayName),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              diff.displayName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
                     )),
@@ -421,12 +426,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildStatItem('Total', stats.totalQuestions.toString(), Icons.quiz),
-          _buildStatItem(
-              'Temas', stats.uniqueTopics.toString(), Icons.category),
+          _buildStatItem('Temas', stats.uniqueTopics.toString(), Icons.category),
           _buildStatItem(
             'Opción M.',
-            stats.questionsByType[QuestionType.multipleChoice]?.toString() ??
-                '0',
+            stats.questionsByType[QuestionType.multipleChoice]?.toString() ?? '0',
             Icons.list,
           ),
           _buildStatItem(
@@ -459,10 +462,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         ),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: 10, color: Colors.grey[600]),
           textAlign: TextAlign.center,
         ),
       ],
@@ -565,10 +565,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         ),
         title: Text(
           question.text,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
@@ -599,7 +596,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Opciones
                 if (question.options.isNotEmpty) ...[
                   const Text(
                     'Opciones:',
@@ -629,7 +625,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                                     : Colors.grey[300]!,
                                 width: isCorrect ? 2 : 1,
                               ),
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Center(
                               child: Text(
@@ -638,7 +634,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                   color: isCorrect
-                                      ? Colors.green[700]
+                                      ? Colors.green[800]
                                       : Colors.grey[600],
                                 ),
                               ),
@@ -649,78 +645,64 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                             child: Text(
                               option,
                               style: TextStyle(
-                                color: isCorrect ? Colors.green[700] : null,
-                                fontWeight: isCorrect ? FontWeight.bold : null,
+                                color: isCorrect
+                                    ? Colors.green[800]
+                                    : Colors.grey[800],
+                                fontWeight: isCorrect
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                               ),
                             ),
                           ),
                           if (isCorrect)
-                            Icon(Icons.check_circle,
-                                color: Colors.green[600], size: 20),
+                            const Icon(Icons.check_circle,
+                                color: Colors.green, size: 18),
                         ],
                       ),
                     );
                   }),
-                  const SizedBox(height: 12),
                 ],
-
-                // Respuesta correcta (para otros tipos)
-                if (question.type != QuestionType.multipleChoice) ...[
-                  const Text(
-                    'Respuesta correcta:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      border: Border.all(color: Colors.green[200]!),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      question.correctAnswer,
-                      style: TextStyle(
-                        color: Colors.green[700],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                // Explicación
                 if (question.explanation != null &&
                     question.explanation!.isNotEmpty) ...[
-                  const Text(
-                    'Explicación:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
                     ),
-                    child: Text(question.explanation!),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.lightbulb_outline,
+                            color: Colors.blue[600], size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            question.explanation!,
+                            style: TextStyle(
+                                color: Colors.blue[800], fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
                 ],
-
-                // Botones de acción
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton.icon(
                       onPressed: () => _navigateToEditQuestion(question),
-                      icon: const Icon(Icons.edit, size: 18),
+                      icon: const Icon(Icons.edit, size: 16),
                       label: const Text('Editar'),
                     ),
+                    const SizedBox(width: 8),
                     TextButton.icon(
-                      onPressed: () => _confirmDelete(question),
-                      icon:
-                          const Icon(Icons.delete, size: 18, color: Colors.red),
+                      onPressed: () => _confirmDeleteQuestion(question),
+                      icon: const Icon(Icons.delete, size: 16,
+                          color: Colors.red),
                       label: const Text('Eliminar',
                           style: TextStyle(color: Colors.red)),
                     ),
@@ -759,46 +741,64 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     );
   }
 
-  Widget? _buildFloatingActionButton() {
-    if (_selectedSubject == null) return null;
-
-    return FloatingActionButton(
-      onPressed: _navigateToCreateQuestion,
-      tooltip: 'Crear pregunta',
-      backgroundColor: _selectedSubject!.color.color,
-      child: const Icon(Icons.add),
-    );
-  }
+Widget? _buildFloatingActionButton() {
+  if (_selectedSubject == null) return null;
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      FloatingActionButton.extended(
+        heroTag: 'ai',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AIGenerateScreen(subject: _selectedSubject!),
+          ),
+        ).then((_) => _loadData()),
+        icon: const Icon(Icons.auto_awesome),
+        label: const Text('Generar con IA'),
+        backgroundColor: Colors.orange,
+      ),
+      const SizedBox(height: 12),
+      FloatingActionButton(
+        heroTag: 'add',
+        onPressed: _navigateToCreateQuestion,
+        backgroundColor: AppTheme.primaryColor,
+        child: const Icon(Icons.add),
+      ),
+    ],
+  );
+}
 
   void _navigateToCreateQuestion() {
-    // Validar que haya materia seleccionada
-    if (_selectedSubject == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecciona una materia primero'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+    if (_selectedSubject == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            QuestionFormScreen(subjectId: _selectedSubject!.id),
+      ),
+    ).then((_) => _loadData());
+  }
 
+  void _navigateToEditQuestion(Question question) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => QuestionFormScreen(
-          subjectId: _selectedSubject!.id, // Ahora garantizado que no es null
+          subjectId: question.subjectId,
+          questionToEdit: question,
         ),
       ),
     ).then((_) => _loadData());
   }
 
-  void _confirmDelete(Question question) async {
+  Future<void> _confirmDeleteQuestion(Question question) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Eliminar Pregunta'),
-        content:
-            const Text('¿Estás seguro de que quieres eliminar esta pregunta?'),
+        content: Text(
+            '¿Estás seguro de eliminar "${question.text}"? Esta acción no se puede deshacer.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -813,7 +813,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
       final questionProvider = context.read<QuestionProvider>();
       final success = await questionProvider.deleteQuestion(question.id);
 
@@ -822,32 +822,11 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           SnackBar(
             content: Text(success
                 ? 'Pregunta eliminada exitosamente'
-                : 'Error al eliminar pregunta'),
+                : 'Error al eliminar la pregunta'),
             backgroundColor: success ? Colors.green : Colors.red,
           ),
         );
       }
     }
-  }
-
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature - Próximamente'),
-        backgroundColor: Colors.blue[600],
-      ),
-    );
-  }
-
-  void _navigateToEditQuestion(Question question) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QuestionFormScreen(
-          subjectId: question.subjectId, // Usar el subjectId de la pregunta
-          questionToEdit: question,
-        ),
-      ),
-    ).then((_) => _loadData());
   }
 }

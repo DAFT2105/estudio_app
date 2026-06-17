@@ -14,12 +14,11 @@ dependencies:
   firebase_core: ^4.6.0
   flutter:
     sdk: flutter
-  
-  # Gestión de estado
+  flutter_dotenv: ^5.2.1
   provider: ^6.1.1
-  
-  # Almacenamiento local
   shared_preferences: ^2.2.2
+  http: ^1.2.2          # llamadas REST a Groq y Gemini
+  image_picker: ^1.1.2  # seleccionar imagen de galería o cámara
 
 dev_dependencies:
   flutter_test:
@@ -29,4 +28,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-     - assets/images/login_bg.jpg
+    - assets/images/login_bg.jpg
+    - .env
