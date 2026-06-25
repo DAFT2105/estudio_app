@@ -28,6 +28,7 @@ abstract class QuestionRepository {
     String? explanation,
     String? topic,
     QuestionDifficulty difficulty = QuestionDifficulty.medium,
+    required QuestionPurpose purpose,
   });
   
   /// Actualizar pregunta existente
@@ -48,12 +49,13 @@ abstract class QuestionRepository {
     QuestionDifficulty difficulty,
   );
   
-  /// Obtener preguntas aleatorias para práctica
+  /// Obtener preguntas aleatorias para práctica o examen
   Future<List<Question>> getRandomQuestions({
     required String subjectId,
     int count = 10,
     QuestionDifficulty? difficulty,
     String? topic,
+    QuestionPurpose? purpose,
   });
   
   /// Obtener estadísticas de preguntas

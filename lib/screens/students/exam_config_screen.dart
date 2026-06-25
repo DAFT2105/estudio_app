@@ -47,9 +47,21 @@ class _ExamConfigScreenState extends State<ExamConfigScreen> {
     setState(() => _isLoading = true);
     final questionProvider = context.read<QuestionProvider>();
     await questionProvider.loadQuestionsBySubject(widget.subject.id);
+
+    // Solo preguntas que aplican a Examen (las legacy sin modo definido
+    // cuentan para ambos — ver Question.appliesTo)
+    final examQuestions = questionProvider.questions
+        .where((q) => q.appliesTo(QuestionPurpose.exam))
+        .toList();
+
     setState(() {
-      _availableQuestions = questionProvider.questions.length;
-      _availableTopics = questionProvider.uniqueTopics;
+      _availableQuestions = examQuestions.length;
+      _availableTopics = examQuestions
+          .where((q) => q.topic != null && q.topic!.isNotEmpty)
+          .map((q) => q.topic!)
+          .toSet()
+          .toList()
+        ..sort();
       if (_availableQuestions > 0) {
         _questionCount =
             _availableQuestions >= 10 ? 10 : _availableQuestions;
@@ -551,6 +563,7 @@ class _ExamConfigScreenState extends State<ExamConfigScreen> {
       count: _questionCount,
       difficulty: _selectedDifficulty,
       topic: _selectedTopic,
+      purpose: QuestionPurpose.exam,
     );
 
     if (questions.isEmpty) {

@@ -29,9 +29,10 @@ class StudentRepositoryImpl implements StudentRepository {
   }
 
   @override
-  Future<Student> createStudent({
-    required String name,
-    required String email,
+  Future<({Student student, String temporaryPassword})> createStudent({
+    required String nombres,
+    required String apellidos,
+    String? email,
     required String parentId,
     StudentGrade grade = StudentGrade.primaria,
     DateTime? birthDate,
@@ -39,18 +40,22 @@ class StudentRepositoryImpl implements StudentRepository {
     StudentAvatar avatar = StudentAvatar.student1,
   }) async {
     try {
-      // Validaciones de formato — la verificación de email duplicado
-      // y la creación de cuenta Auth la maneja el servicio
-      if (name.trim().isEmpty) {
-        throw StudentException('El nombre del estudiante es requerido');
+      // Validaciones de formato — la generación del username y la
+      // creación de la cuenta Auth las maneja el servicio
+      if (nombres.trim().isEmpty) {
+        throw StudentException('Los nombres del estudiante son requeridos');
       }
-      if (email.trim().isEmpty) {
-        throw StudentException('El email es requerido');
+      if (apellidos.trim().isEmpty) {
+        throw StudentException('Los apellidos del estudiante son requeridos');
       }
-      if (name.length > 50) {
-        throw StudentException('El nombre no puede exceder 50 caracteres');
+      if (nombres.length > 50) {
+        throw StudentException('Los nombres no pueden exceder 50 caracteres');
       }
-      if (!_isValidEmail(email)) {
+      if (apellidos.length > 50) {
+        throw StudentException('Los apellidos no pueden exceder 50 caracteres');
+      }
+      // El email es opcional — solo se valida formato si el padre lo ingresó
+      if (email != null && email.trim().isNotEmpty && !_isValidEmail(email)) {
         throw StudentException('Formato de email inválido');
       }
       if (birthDate != null) {
@@ -65,8 +70,9 @@ class StudentRepositoryImpl implements StudentRepository {
       }
 
       return await _studentService.createStudent(
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
+        nombres: nombres.trim(),
+        apellidos: apellidos.trim(),
+        email: email?.trim(),
         parentId: parentId,
         grade: grade,
         birthDate: birthDate,
@@ -83,24 +89,30 @@ class StudentRepositoryImpl implements StudentRepository {
   @override
   Future<Student> updateStudent(Student student) async {
     try {
-      if (student.name.trim().isEmpty) {
-        throw StudentException('El nombre del estudiante es requerido');
+      if (student.nombres.trim().isEmpty) {
+        throw StudentException('Los nombres del estudiante son requeridos');
       }
-      if (student.email.trim().isEmpty) {
-        throw StudentException('El email es requerido');
+      if (student.apellidos.trim().isEmpty) {
+        throw StudentException('Los apellidos del estudiante son requeridos');
       }
-      if (!_isValidEmail(student.email)) {
+      // El email es opcional — solo se valida si está presente
+      if (student.email != null &&
+          student.email!.trim().isNotEmpty &&
+          !_isValidEmail(student.email!)) {
         throw StudentException('Formato de email inválido');
       }
 
       // Verificar email duplicado excluyendo el propio estudiante
-      final emailInUse = await _studentService.isEmailInUse(
-        student.email,
-        excludeStudentId: student.id,
-        parentId: student.parentId,
-      );
-      if (emailInUse) {
-        throw StudentException('Ya existe otro estudiante con ese email');
+      // (solo aplica si el estudiante tiene un email asignado)
+      if (student.email != null && student.email!.trim().isNotEmpty) {
+        final emailInUse = await _studentService.isEmailInUse(
+          student.email!,
+          excludeStudentId: student.id,
+          parentId: student.parentId,
+        );
+        if (emailInUse) {
+          throw StudentException('Ya existe otro estudiante con ese email');
+        }
       }
 
       return await _studentService.updateStudent(student);

@@ -38,7 +38,11 @@ class _StudentsScreenState extends State<StudentsScreen> {
     final studentProvider = context.read<StudentProvider>();
     
     if (authProvider.currentUser != null) {
-      studentProvider.loadStudents(authProvider.currentUser!.id);
+      final user = authProvider.currentUser!;
+      studentProvider.loadStudents(
+        user.id,
+        userRole: user.role.toString().split('.').last,
+      );
     }
   }
 
@@ -299,7 +303,10 @@ class _StudentsScreenState extends State<StudentsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text(student.email),
+            Text(
+              'Usuario: ${student.username}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -479,7 +486,10 @@ class _StudentsScreenState extends State<StudentsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow('Email', student.email),
+            _buildDetailRow('Usuario', student.username),
+            // Email — OCULTO TEMPORALMENTE (Fase 5.3.1), ver student_form_screen.dart
+            // if (student.email != null && student.email!.isNotEmpty)
+            //   _buildDetailRow('Email', student.email!),
             _buildDetailRow('Grado', student.grade.displayName),
             if (student.age != null) _buildDetailRow('Edad', '${student.age} años'),
             _buildDetailRow('Materias asignadas', '${student.subjectCount}'),

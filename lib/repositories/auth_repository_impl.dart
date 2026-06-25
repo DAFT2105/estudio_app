@@ -21,6 +21,15 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<User?> loginWithGoogle() async {
+    try {
+      return await _authService.signInWithGoogle();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> logout() async {
     await _authService.clearSession();
   }

@@ -1,7 +1,9 @@
 // lib/screens/students/student_form_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/student_provider.dart';
 import '../../models/student.dart';
@@ -21,7 +23,8 @@ class StudentFormScreen extends StatefulWidget {
 
 class _StudentFormScreenState extends State<StudentFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
+  final _nombresController = TextEditingController();
+  final _apellidosController = TextEditingController();
   final _emailController = TextEditingController();
   final _notesController = TextEditingController();
   
@@ -46,8 +49,9 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
   void _loadStudentData() {
     final student = widget.studentToEdit!;
     
-    _nameController.text = student.name;
-    _emailController.text = student.email;
+    _nombresController.text = student.nombres;
+    _apellidosController.text = student.apellidos;
+    _emailController.text = student.email ?? '';
     _notesController.text = student.notes ?? '';
     
     _selectedGrade = student.grade;
@@ -57,7 +61,8 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _nombresController.dispose();
+    _apellidosController.dispose();
     _emailController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -123,55 +128,94 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            
-            // Nombre completo
+
+            // Nombres
             TextFormField(
-              controller: _nameController,
+              controller: _nombresController,
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                labelText: 'Nombre completo *',
-                hintText: 'Ej: María Elena Pérez',
+                labelText: 'Nombres *',
+                hintText: 'Ej: María Elena',
                 prefixIcon: Icon(Icons.person),
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'El nombre es requerido';
+                  return 'Los nombres son requeridos';
                 }
-                if (value.trim().length < 3) {
-                  return 'El nombre debe tener al menos 3 caracteres';
+                if (value.trim().length < 2) {
+                  return 'Debe tener al menos 2 caracteres';
                 }
                 if (value.length > 50) {
-                  return 'El nombre no puede exceder 50 caracteres';
+                  return 'No puede exceder 50 caracteres';
                 }
                 return null;
               },
             ),
-            
+
             const SizedBox(height: 16),
-            
-            // Email
+
+            // Apellidos (campo único — la primera palabra se usa como
+            // "primer apellido" para generar el usuario de acceso)
             TextFormField(
-              controller: _emailController,
+              controller: _apellidosController,
               textInputAction: TextInputAction.next,
-              keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(
-                labelText: 'Correo electrónico *',
-                hintText: 'estudiante@email.com',
-                prefixIcon: Icon(Icons.email),
+                labelText: 'Apellidos *',
+                hintText: 'Ej: Pérez García',
+                prefixIcon: Icon(Icons.person_outline),
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'El email es requerido';
+                  return 'Los apellidos son requeridos';
                 }
-                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                  return 'Formato de email inválido';
+                if (value.trim().length < 2) {
+                  return 'Debe tener al menos 2 caracteres';
+                }
+                if (value.length > 50) {
+                  return 'No puede exceder 50 caracteres';
                 }
                 return null;
               },
             ),
-            
+
             const SizedBox(height: 16),
-            
+
+            // Email — OCULTO TEMPORALMENTE (Fase 5.3.1)
+            // El estudiante ya no necesita correo propio: ingresa con su
+            // `username` generado automáticamente. Se deja el código listo
+            // para reactivar cuando se integre el correo institucional de
+            // colegios a futuro — solo hay que descomentar este bloque.
+            // ────────────────────────────────────────────────────────────
+            // TextFormField(
+            //   controller: _emailController,
+            //   textInputAction: TextInputAction.next,
+            //   keyboardType: TextInputType.emailAddress,
+            //   decoration: const InputDecoration(
+            //     labelText: 'Correo electrónico (opcional)',
+            //     hintText: 'Déjalo vacío si el estudiante no tiene uno',
+            //     prefixIcon: Icon(Icons.email_outlined),
+            //   ),
+            //   validator: (value) {
+            //     if (value == null || value.trim().isEmpty) {
+            //       return null; // opcional
+            //     }
+            //     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+            //       return 'Formato de email inválido';
+            //     }
+            //     return null;
+            //   },
+            // ),
+            // Padding(
+            //   padding: const EdgeInsets.only(top: 6, left: 4),
+            //   child: Text(
+            //     'El estudiante ingresará con un usuario generado automáticamente, '
+            //     'no necesita correo propio.',
+            //     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            //   ),
+            // ),
+
+            const SizedBox(height: 16),
+
             // Fecha de nacimiento
             InkWell(
               onTap: _selectBirthDate,
@@ -464,14 +508,16 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
       final studentProvider = context.read<StudentProvider>();
       final currentUser = authProvider.currentUser!;
 
-      bool success;
-      String action;
+      final nombres = _nombresController.text.trim();
+      final apellidos = _apellidosController.text.trim();
+      final email = _emailController.text.trim();
 
       if (isEditing) {
         // MODO EDICIÓN: Actualizar estudiante existente
         final updatedStudent = widget.studentToEdit!.copyWith(
-          name: _nameController.text.trim(),
-          email: _emailController.text.trim().toLowerCase(),
+          nombres: nombres,
+          apellidos: apellidos,
+          email: email.isEmpty ? null : email.toLowerCase(),
           grade: _selectedGrade,
           avatar: _selectedAvatar,
           birthDate: _selectedBirthDate,
@@ -479,64 +525,200 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           updatedAt: DateTime.now(),
         );
 
-        success = await studentProvider.updateStudent(updatedStudent, currentUser.id);
-        action = 'actualizado';
+        final success = await studentProvider.updateStudent(updatedStudent, currentUser.id);
+
+        if (success && mounted) {
+          _showSnackBar('Estudiante "$nombres $apellidos" actualizado exitosamente');
+          Navigator.pop(context);
+        } else if (mounted) {
+          _showErrorSnackBar(
+              studentProvider.errorMessage ?? 'Error al actualizar estudiante');
+        }
       } else {
         // MODO CREACIÓN: Crear nuevo estudiante
-        success = await studentProvider.createStudent(
-          name: _nameController.text.trim(),
-          email: _emailController.text.trim().toLowerCase(),
+        final credentials = await studentProvider.createStudent(
+          nombres: nombres,
+          apellidos: apellidos,
+          email: email.isEmpty ? null : email.toLowerCase(),
           parentId: currentUser.id,
           grade: _selectedGrade,
           avatar: _selectedAvatar,
           birthDate: _selectedBirthDate,
           notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         );
-        action = 'creado';
-      }
 
-      if (success && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: _selectedAvatar.backgroundColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _selectedAvatar.icon,
-                    color: _selectedGrade.color,
-                    size: 12,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Estudiante "${_nameController.text.trim()}" $action exitosamente',
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
+        if (credentials != null && mounted) {
+          await _showCredentialsDialog(
+            studentName: '$nombres $apellidos',
+            username: credentials.username,
+            temporaryPassword: credentials.temporaryPassword,
+          );
+          if (mounted) Navigator.pop(context);
+        } else if (mounted) {
+          _showErrorSnackBar(
+              studentProvider.errorMessage ?? 'Error al crear estudiante');
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al ${isEditing ? "actualizar" : "crear"} estudiante: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showErrorSnackBar(
+            'Error al ${isEditing ? "actualizar" : "crear"} estudiante: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  /// Muestra el usuario y la clave temporal generados — es la ÚNICA vez
+  /// que la clave existe, así que no se puede cerrar el diálogo por accidente
+  /// (barrierDismissible: false) y se ofrece copiar/compartir cada dato.
+  Future<void> _showCredentialsDialog({
+    required String studentName,
+    required String username,
+    required String temporaryPassword,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green[600]),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Estudiante creado')),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Comparte estos datos con $studentName para que pueda ingresar. '
+                  'Esta clave temporal no se mostrará de nuevo.',
+                  style: TextStyle(color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 16),
+                _buildCredentialRow(
+                  label: 'Usuario',
+                  value: username,
+                  icon: Icons.person,
+                ),
+                const SizedBox(height: 12),
+                _buildCredentialRow(
+                  label: 'Clave temporal',
+                  value: temporaryPassword,
+                  icon: Icons.key,
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber[800], size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Al ingresar por primera vez, el estudiante deberá crear su propia contraseña.',
+                          style: TextStyle(fontSize: 12, color: Colors.amber[900]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () {
+                SharePlus.instance.share(
+                  ShareParams(
+                    text: 'Hola $studentName, tus datos de acceso a EstudioApp son:\n\n'
+                        'Usuario: $username\n'
+                        'Clave temporal: $temporaryPassword\n\n'
+                        'Al ingresar por primera vez deberás crear tu propia contraseña.',
+                  ),
+                );
+              },
+              icon: const Icon(Icons.share),
+              label: const Text('Compartir'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Listo'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCredentialRow({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy, size: 18),
+            tooltip: 'Copiar',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$label copiado'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

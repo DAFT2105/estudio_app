@@ -585,6 +585,14 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                 Icons.signal_cellular_alt,
                 question.difficulty.color,
               ),
+              question.purpose != null
+                  ? _buildInfoChip(
+                      question.purpose!.displayName,
+                      question.purpose!.icon,
+                      question.purpose!.color,
+                    )
+                  : _buildInfoChip(
+                      'Ambos modos', Icons.all_inclusive, Colors.grey),
               if (question.topic != null && question.topic!.isNotEmpty)
                 _buildInfoChip(question.topic!, Icons.category, Colors.grey),
             ],

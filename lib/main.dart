@@ -1,9 +1,11 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
@@ -11,6 +13,7 @@ import 'providers/subject_provider.dart';
 import 'providers/student_provider.dart';
 import 'providers/question_provider.dart';
 import 'providers/result_provider.dart';
+import 'providers/question_set_provider.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/auth_repository_impl.dart';
 import 'repositories/subject_repository.dart';
@@ -21,13 +24,17 @@ import 'repositories/question_repository.dart';
 import 'repositories/question_repository_impl.dart';
 import 'repositories/result_repository.dart';
 import 'repositories/result_repository_impl.dart';
+import 'repositories/question_set_repository.dart';
+import 'repositories/question_set_repository_impl.dart';
 import 'services/auth_service.dart';
 import 'services/subject_service.dart';
 import 'services/student_service.dart';
 import 'services/question_service.dart';
 import 'services/result_service.dart';
+import 'services/question_set_service.dart';
 import 'models/user.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/change_password_required_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'utils/app_theme.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -38,6 +45,16 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // App Check — protege Firestore y Auth de requests externos.
+  // En debug/emulador usa el DebugProvider (imprime el token en el log).
+  // En producción usa Play Integrity (verifica que la app sea legítima).
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: kDebugMode
+        ? AndroidProvider.debug
+        : AndroidProvider.playIntegrity,
+  );
+
   await _seedTestUsers();
   runApp(const EstudioApp());
 }
@@ -148,6 +165,9 @@ class EstudioApp extends StatelessWidget {
     final resultService = ResultService();
     final resultRepository =
         ResultRepositoryImpl(resultService: resultService);
+    final questionSetService = QuestionSetService();
+    final questionSetRepository =
+        QuestionSetRepositoryImpl(service: questionSetService);
 
     return MultiProvider(
       providers: [
@@ -156,11 +176,13 @@ class EstudioApp extends StatelessWidget {
         Provider<StudentService>.value(value: studentService),
         Provider<QuestionService>.value(value: questionService),
         Provider<ResultService>.value(value: resultService),
+        Provider<QuestionSetService>.value(value: questionSetService),
         Provider<AuthRepository>.value(value: authRepository),
         Provider<SubjectRepository>.value(value: subjectRepository),
         Provider<StudentRepository>.value(value: studentRepository),
         Provider<QuestionRepository>.value(value: questionRepository),
         Provider<ResultRepository>.value(value: resultRepository),
+        Provider<QuestionSetRepository>.value(value: questionSetRepository),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) =>
               AuthProvider(authRepository: authRepository),
@@ -180,6 +202,10 @@ class EstudioApp extends StatelessWidget {
         ChangeNotifierProvider<ResultProvider>(
           create: (_) =>
               ResultProvider(resultRepository: resultRepository),
+        ),
+        ChangeNotifierProvider<QuestionSetProvider>(
+          create: (_) =>
+              QuestionSetProvider(repository: questionSetRepository),
         ),
       ],
       child: MaterialApp(
@@ -203,6 +229,9 @@ class AuthWrapper extends StatelessWidget {
           case AuthStatus.loading:
             return const LoadingScreen();
           case AuthStatus.authenticated:
+            if (authProvider.currentUser?.mustChangePassword == true) {
+              return const ChangePasswordRequiredScreen();
+            }
             return const HomeScreen();
           case AuthStatus.unauthenticated:
           case AuthStatus.error:

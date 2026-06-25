@@ -2,7 +2,7 @@
 
 enum UserRole {
   admin,
-  parent, 
+  parent,
   student,
 }
 
@@ -68,6 +68,8 @@ class User {
   final bool isActive;
   final List<String>? assignedSubjects; // Para estudiantes
   final String? parentId; // Para estudiantes, referencia al padre
+  final String? username; // Para estudiantes sin email propio (Fase 5.3)
+  final bool mustChangePassword; // Fuerza definir clave propia en el próximo login
 
   const User({
     required this.id,
@@ -79,6 +81,8 @@ class User {
     this.isActive = true,
     this.assignedSubjects,
     this.parentId,
+    this.username,
+    this.mustChangePassword = false,
   });
 
   // Verificar si tiene un permiso específico
@@ -106,7 +110,7 @@ class User {
         orElse: () => UserRole.student,
       ),
       createdAt: DateTime.parse(json['createdAt'] as String),
-      lastLogin: json['lastLogin'] != null 
+      lastLogin: json['lastLogin'] != null
           ? DateTime.parse(json['lastLogin'] as String)
           : null,
       isActive: json['isActive'] as bool? ?? true,
@@ -114,6 +118,8 @@ class User {
           ? List<String>.from(json['assignedSubjects'])
           : null,
       parentId: json['parentId'] as String?,
+      username: json['username'] as String?,
+      mustChangePassword: json['mustChangePassword'] as bool? ?? false,
     );
   }
 
@@ -129,6 +135,8 @@ class User {
       'isActive': isActive,
       'assignedSubjects': assignedSubjects,
       'parentId': parentId,
+      'username': username,
+      'mustChangePassword': mustChangePassword,
     };
   }
 
@@ -143,6 +151,8 @@ class User {
     bool? isActive,
     List<String>? assignedSubjects,
     String? parentId,
+    String? username,
+    bool? mustChangePassword,
   }) {
     return User(
       id: id ?? this.id,
@@ -154,6 +164,8 @@ class User {
       isActive: isActive ?? this.isActive,
       assignedSubjects: assignedSubjects ?? this.assignedSubjects,
       parentId: parentId ?? this.parentId,
+      username: username ?? this.username,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
     );
   }
 

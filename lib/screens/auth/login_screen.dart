@@ -177,14 +177,14 @@ Widget _buildHeader() {
                   ),
                   const SizedBox(height: 24),
                   
-                  // Campo de Email
+                  // Campo de Correo o Usuario
                   TextFormField(
                     controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: const Icon(Icons.email_outlined),
+                      labelText: 'Correo o Usuario',
+                      hintText: 'tu@correo.com  ó  usuario',
+                      prefixIcon: const Icon(Icons.person_outline),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -199,9 +199,14 @@ Widget _buildHeader() {
                     ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
-                        return 'El email es requerido';
+                        return 'El correo o usuario es requerido';
                       }
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                      // Si parece un email, validar formato completo.
+                      // Si no, es el "usuario" de un estudiante — basta con
+                      // que no esté vacío, AuthProvider resuelve el resto.
+                      if (value.contains('@') &&
+                          !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                              .hasMatch(value)) {
                         return 'Formato de email inválido';
                       }
                       return null;
@@ -309,6 +314,53 @@ Widget _buildHeader() {
                             ),
                           ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // Divisor "o"
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: Colors.grey[300])),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'o',
+                          style: TextStyle(color: Colors.grey[500]),
+                        ),
+                      ),
+                      Expanded(child: Divider(color: Colors.grey[300])),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Botón de Google Sign-In (solo para padres)
+                  OutlinedButton(
+                    onPressed: authProvider.isLoading
+                        ? null
+                        : () => _handleGoogleLogin(context, authProvider),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: Colors.grey[300]!),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Continuar con ',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 15,
+                          ),
+                        ),
+                        _GoogleLogo(size: 15),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -399,7 +451,6 @@ Widget _buildHeader() {
     );
 
     if (success && mounted) {
-      // Navegación se manejará en main.dart
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Bienvenido, ${authProvider.currentUser!.name}'),
@@ -407,5 +458,58 @@ Widget _buildHeader() {
         ),
       );
     }
+  }
+
+  Future<void> _handleGoogleLogin(
+      BuildContext context, AuthProvider authProvider) async {
+    final success = await authProvider.loginWithGoogle();
+
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bienvenido, ${authProvider.currentUser!.name}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+    // Si success == false y no hay errorMessage, el usuario canceló el selector
+    // de cuentas — no mostramos nada, la UI vuelve al estado normal sola.
+  }
+}
+
+/// Logo de Google usando las letras con colores oficiales.
+/// Más simple y confiable que un CustomPainter para la "G".
+class _GoogleLogo extends StatelessWidget {
+  final double size;
+  const _GoogleLogo({this.size = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    // Colores oficiales de Google por letra: G-o-o-g-l-e
+    const colors = [
+      Color(0xFF4285F4), // G — azul
+      Color(0xFFEA4335), // o — rojo
+      Color(0xFFFBBC05), // o — amarillo
+      Color(0xFF4285F4), // g — azul
+      Color(0xFF34A853), // l — verde
+      Color(0xFFEA4335), // e — rojo
+    ];
+    const letters = ['G', 'o', 'o', 'g', 'l', 'e'];
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(
+        letters.length,
+        (i) => Text(
+          letters[i],
+          style: TextStyle(
+            color: colors[i],
+            fontSize: size,
+            fontWeight: FontWeight.bold,
+            height: 1,
+          ),
+        ),
+      ),
+    );
   }
 }

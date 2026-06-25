@@ -6,8 +6,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/subject_provider.dart';
 import '../../providers/student_provider.dart';
 import '../../providers/question_provider.dart';
+import '../../providers/result_provider.dart';
 import '../../models/user.dart';
 import '../../models/subject.dart';
+import '../../models/practice_result.dart';
+import '../../services/result_service.dart';
 import '../../utils/app_theme.dart';
 import '../subjects/subjects_screen.dart';
 import '../subjects/ver_materias_screen.dart';
@@ -18,6 +21,8 @@ import '../questions/questions_screen.dart';
 import '../questions/ai_generate_screen.dart';
 import '../students/practice_selection_screen.dart';
 import '../results/results_screen.dart';
+import '../admin/manage_users_screen.dart';
+import '../admin/reports_screen.dart';
 import '../students/exam_selection_screen.dart';
 import '../results/parent_results_screen.dart';
 
@@ -34,7 +39,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadParentStats());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadParentStats();
+      _loadStudentStats();
+    });
+  }
+
+  Future<void> _loadStudentStats() async {
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.currentUser;
+    if (user == null || !user.isStudent) return;
+
+    final resultProvider = context.read<ResultProvider>();
+    await resultProvider.loadResults(user.id);
   }
 
   Future<void> _loadParentStats() async {
@@ -49,12 +66,13 @@ class _HomeScreenState extends State<HomeScreen> {
     await Future.wait([
       subjectProvider.loadSubjects(user.id, 'parent'),
       studentProvider.loadStudents(user.id),
+      // FIX: antes solo se cargaban las preguntas de la primera materia
+      // (subjectProvider.activeSubjects.first), lo que daba un conteo
+      // incorrecto en el badge "Preguntas" del header en cuanto el padre
+      // tuviera 2+ materias. loadQuestionsByCreator trae TODAS las
+      // preguntas activas creadas por el padre, sin importar la materia.
+      questionProvider.loadQuestionsByCreator(user.id),
     ]);
-
-    if (subjectProvider.activeSubjects.isNotEmpty) {
-      await questionProvider.loadQuestionsBySubject(
-          subjectProvider.activeSubjects.first.id);
-    }
   }
 
   @override
@@ -63,7 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, authProvider, child) {
         final user = authProvider.currentUser!;
         return Scaffold(
-          appBar: user.isParent ? null : _buildAppBar(user, authProvider),
+          appBar: (user.isParent || user.isStudent)
+              ? null
+              : _buildAppBar(user, authProvider),
           body: _buildBody(user, authProvider),
           bottomNavigationBar: _buildBottomNavigation(user),
           floatingActionButton: _buildFloatingActionButton(user),
@@ -126,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case UserRole.parent:
         return _buildParentDashboard(user, authProvider);
       case UserRole.student:
-        return _buildStudentDashboard();
+        return _buildStudentDashboard(user, authProvider);
     }
   }
 
@@ -140,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child) {
         final subjectCount = subjectProvider.activeSubjects.length;
         final studentCount = studentProvider.activeStudents.length;
-        final questionCount = questionProvider.stats?.totalQuestions ?? 0;
+        final questionCount = questionProvider.activeQuestions.length;
 
         return SingleChildScrollView(
           child: Column(
@@ -623,7 +643,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildActionCard('Usuarios',
                   'Gestionar administradores, padres y estudiantes',
                   Icons.people, AppTheme.adminColor,
-                  () => _showComingSoon('Gestión de Usuarios')),
+                  _navigateToManageUsers),
               _buildActionCard(
                   'Materias',
                   'Crear y administrar todas las materias',
@@ -643,7 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Estadísticas y reportes del sistema',
                   Icons.analytics,
                   AppTheme.adminColor,
-                  () => _showComingSoon('Reportes y Estadísticas')),
+                  _navigateToReports),
             ],
           ),
         ],
@@ -655,43 +675,257 @@ class _HomeScreenState extends State<HomeScreen> {
   // STUDENT DASHBOARD
   // ─────────────────────────────────────────────
 
-  Widget _buildStudentDashboard() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildWelcomeCard('Panel de Estudiante',
-              'Aprende y practica tus conocimientos',
-              Icons.school, AppTheme.studentColor),
-          const SizedBox(height: 20),
-          Text('Mis Estudios',
-              style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
+  Widget _buildStudentDashboard(User user, AuthProvider authProvider) {
+    return Consumer<ResultProvider>(
+      builder: (context, resultProvider, child) {
+        final stats = resultProvider.stats;
+        final subjectCount = user.assignedSubjects?.length ?? 0;
+
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildActionCard('Materias', 'Ver materias asignadas',
-                  Icons.library_books, AppTheme.studentColor,
-                  _navigateToSubjects),
-              _buildActionCard(
-                  'Practicar',
-                  'Modo práctica sin límite de tiempo',
-                  Icons.fitness_center,
-                  AppTheme.studentColor,
-                  _navigateToPractice),
-              _buildActionCard('Examen', 'Realizar exámenes cronometrados',
-                  Icons.timer, AppTheme.studentColor, _navigateToExam),
-              _buildActionCard('Resultados', 'Ver mi progreso y resultados',
-                  Icons.assessment, AppTheme.studentColor,
-                  _navigateToResults),
+              _buildStudentHeader(
+                user: user,
+                authProvider: authProvider,
+                subjectCount: subjectCount,
+                stats: stats,
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildStudentProgressCard(stats),
+                    const SizedBox(height: 20),
+                    Text(
+                      'MIS ESTUDIOS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 1.0,
+                      children: [
+                        _buildNewActionCard(
+                          title: 'Materias',
+                          subtitle: 'Ver materias asignadas',
+                          iconAsset: 'assets/icons/books.gif',
+                          bgColor: const Color(0xFFBBDEFB),
+                          onTap: _navigateToSubjects,
+                        ),
+                        _buildNewActionCard(
+                          title: 'Practicar',
+                          subtitle: 'Sin límite de tiempo',
+                          iconAsset: 'assets/icons/practice.gif',
+                          bgColor: const Color(0xFFC8E6C9),
+                          onTap: _navigateToPractice,
+                        ),
+                        _buildNewActionCard(
+                          title: 'Examen',
+                          subtitle: 'Modo cronometrado',
+                          iconAsset: 'assets/icons/exam.gif',
+                          bgColor: const Color(0xFFFFCCBC),
+                          onTap: _navigateToExam,
+                        ),
+                        _buildNewActionCard(
+                          title: 'Resultados',
+                          subtitle: 'Mi progreso',
+                          iconAsset: 'assets/icons/results.gif',
+                          bgColor: const Color(0xFFD1C4E9),
+                          onTap: _navigateToResults,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStudentHeader({
+    required User user,
+    required AuthProvider authProvider,
+    required int subjectCount,
+    required PracticeStats? stats,
+  }) {
+    final sessionCount = stats?.totalSessions ?? 0;
+    final averagePercentage = stats?.averagePercentageRounded ?? 0;
+
+    return Container(
+      color: AppTheme.studentColor,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        bottom: 24,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bienvenido de vuelta',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white.withOpacity(0.85),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      user.name,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                child: CircleAvatar(
+                  backgroundColor: Colors.white.withOpacity(0.25),
+                  child: Text(
+                    user.name[0].toUpperCase(),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                onSelected: (value) {
+                  if (value == 'logout') _showLogoutDialog(authProvider);
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: ListTile(
+                      leading: const Icon(Icons.logout, color: Colors.red),
+                      title: const Text('Cerrar Sesión',
+                          style: TextStyle(color: Colors.red)),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              _buildStudentStatBadge('$subjectCount', 'Materias'),
+              const SizedBox(width: 8),
+              _buildStudentStatBadge('$sessionCount', 'Sesiones'),
+              const SizedBox(width: 8),
+              _buildStudentStatBadge('$averagePercentage%', 'Promedio'),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStudentStatBadge(String value, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.studentColor,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF4A6A8A),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudentProgressCard(PracticeStats? stats) {
+    final hasResults = stats != null && !stats.isEmpty;
+    final bestResult = stats?.bestResult;
+
+    return InkWell(
+      onTap: _navigateToResults,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.blue[50],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.blue[200]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppTheme.studentColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.bar_chart,
+                  color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ver mi progreso',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[900],
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    hasResults && bestResult != null
+                        ? 'Tu mejor resultado: ${bestResult.percentageRounded}% ${bestResult.rating.emoji}'
+                        : 'Aún no tienes sesiones registradas',
+                    style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: Colors.blue[700]),
+          ],
+        ),
       ),
     );
   }
@@ -845,14 +1079,17 @@ class _HomeScreenState extends State<HomeScreen> {
         if (user.isAdmin) {
           switch (index) {
             case 1:
-              _showComingSoon('Gestión de Usuarios');
+              _navigateToManageUsers();
               break;
             case 2:
-              _showComingSoon('Reportes y Estadísticas');
+              _navigateToReports();
               break;
             case 3:
               _showComingSoon('Configuración');
               break;
+          }
+          if (index != 0) {
+            setState(() => _selectedIndex = 0);
           }
         } else if (user.isParent) {
           switch (index) {
@@ -917,6 +1154,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _navigateToQuestions() => Navigator.push(context,
       MaterialPageRoute(builder: (_) => const QuestionsScreen()));
+
+  void _navigateToManageUsers() => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
+
+  void _navigateToReports() => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => const ReportsScreen()));
 
   void _navigateToPractice() => Navigator.push(context,
       MaterialPageRoute(builder: (_) => const PracticeSelectionScreen()));

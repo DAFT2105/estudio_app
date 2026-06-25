@@ -5,9 +5,12 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subject_provider.dart';
 import '../../providers/question_provider.dart';
+import '../../providers/question_set_provider.dart';
+import '../../models/question.dart';
 import '../../models/subject.dart';
 import '../../utils/app_theme.dart';
 import 'exam_config_screen.dart';
+import 'question_set_chooser_screen.dart';
 
 class ExamSelectionScreen extends StatefulWidget {
   const ExamSelectionScreen({super.key});
@@ -243,11 +246,21 @@ class _ExamSelectionScreenState extends State<ExamSelectionScreen> {
     );
   }
 
-  void _navigateToExamConfig(Subject subject) {
+  void _navigateToExamConfig(Subject subject) async {
+    final setProvider = context.read<QuestionSetProvider>();
+    await setProvider.loadSetsBySubject(subject.id, purpose: QuestionPurpose.exam);
+
+    if (!mounted) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ExamConfigScreen(subject: subject),
+        builder: (context) => setProvider.sets.isEmpty
+            ? ExamConfigScreen(subject: subject)
+            : QuestionSetChooserScreen(
+                subject: subject,
+                purpose: QuestionPurpose.exam,
+              ),
       ),
     );
   }

@@ -6,6 +6,9 @@ import '../models/user.dart';
 abstract class AuthRepository {
   /// Iniciar sesión con email y contraseña
   Future<User?> login(String email, String password);
+
+  /// Iniciar sesión con Google (solo para padres)
+  Future<User?> loginWithGoogle();
   
   /// Cerrar sesión del usuario actual
   Future<void> logout();

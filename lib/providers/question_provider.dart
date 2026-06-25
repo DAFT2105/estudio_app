@@ -86,6 +86,7 @@ class QuestionProvider extends ChangeNotifier {
     String? explanation,
     String? topic,
     QuestionDifficulty difficulty = QuestionDifficulty.medium,
+    required QuestionPurpose purpose,
   }) async {
     try {
       _clearError();
@@ -100,6 +101,7 @@ class QuestionProvider extends ChangeNotifier {
         explanation: explanation,
         topic: topic,
         difficulty: difficulty,
+        purpose: purpose,
       );
 
       // Agregar a la lista local
@@ -249,6 +251,7 @@ class QuestionProvider extends ChangeNotifier {
     int count = 10,
     QuestionDifficulty? difficulty,
     String? topic,
+    QuestionPurpose? purpose,
   }) async {
     try {
       return await _questionRepository.getRandomQuestions(
@@ -256,6 +259,7 @@ class QuestionProvider extends ChangeNotifier {
         count: count,
         difficulty: difficulty,
         topic: topic,
+        purpose: purpose,
       );
     } on QuestionException catch (e) {
       _setError(e.message);

@@ -104,6 +104,7 @@ class QuestionService {
     String? explanation,
     String? topic,
     QuestionDifficulty difficulty = QuestionDifficulty.medium,
+    required QuestionPurpose purpose,
   }) async {
     try {
       final docRef = _firestore.collection(_collection).doc();
@@ -119,6 +120,7 @@ class QuestionService {
         explanation: explanation,
         topic: topic,
         difficulty: difficulty,
+        purpose: purpose,
         createdAt: DateTime.now(),
       );
 
@@ -229,9 +231,16 @@ class QuestionService {
     int count = 10,
     QuestionDifficulty? difficulty,
     String? topic,
+    QuestionPurpose? purpose,
   }) async {
     try {
       var questions = await getQuestionsBySubject(subjectId);
+
+      // Filtrar por modo (práctica/examen). appliesTo() ya trata las
+      // preguntas legacy (purpose == null) como válidas para ambos modos.
+      if (purpose != null) {
+        questions = questions.where((q) => q.appliesTo(purpose)).toList();
+      }
 
       // Filtrar por dificultad si se especifica
       if (difficulty != null) {

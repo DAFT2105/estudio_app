@@ -1,10 +1,12 @@
 // lib/services/student_service.dart
 
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:firebase_core/firebase_core.dart';
 import '../models/student.dart';
 import '../models/user.dart';
+import '../utils/app_constants.dart';
 
 class StudentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -14,12 +16,13 @@ class StudentService {
   static const String _subjectsCollection = 'subjects';
   static const String _usersCollection = 'users';
 
-  // Contraseña por defecto para nuevos estudiantes
-  // En el futuro se enviará por email con Cloud Functions (plan Blaze)
-  static const String _defaultStudentPassword = 'estudiante123';
-
   // Nombre único para la instancia secundaria de Firebase
   static const String _secondaryAppName = 'studentCreation';
+
+  // Caracteres usados para generar claves temporales — se excluyen
+  // 0/O y 1/l/I para evitar confusión visual al copiarla a mano.
+  static const String _passwordChars =
+      'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
 
   // ─────────────────────────────────────────────
   // HELPERS PRIVADOS
@@ -56,11 +59,59 @@ class StudentService {
     };
   }
 
-  /// Crea cuenta Auth del estudiante usando una segunda instancia de Firebase
-  /// La sesión del padre NO se interrumpe en ningún momento
-  Future<String> _createStudentAuthAccount(String email) async {
-    FirebaseApp? secondaryApp;
+  /// Quita tildes/ñ y caracteres no alfabéticos, deja todo en minúsculas.
+  /// "José Ñúñez" → "josennez"
+  String _normalizeForUsername(String text) {
+    const withAccents = 'áéíóúÁÉÍÓÚñÑüÜ';
+    const withoutAccents = 'aeiouAEIOUnNuU';
+    var result = text;
+    for (var i = 0; i < withAccents.length; i++) {
+      result = result.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+    return result.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+  }
 
+  /// Email sintético usado internamente por Firebase Auth.
+  /// El estudiante NUNCA ve ni necesita conocer este valor.
+  String _buildSyntheticEmail(String username) =>
+      '$username@${AppConstants.studentEmailDomain}';
+
+  /// Genera una clave temporal aleatoria — distinta para cada estudiante,
+  /// nunca persistida en Firestore (solo se devuelve una vez al crearla).
+  String _generateTemporaryPassword({int length = 8}) {
+    final rand = Random.secure();
+    return List.generate(
+            length, (_) => _passwordChars[rand.nextInt(_passwordChars.length)])
+        .join();
+  }
+
+  /// Genera un username único probando candidatos crecientes y crea la
+  /// cuenta Auth correspondiente en la instancia secundaria de Firebase.
+  /// La sesión del padre NO se interrumpe en ningún momento.
+  ///
+  /// Algoritmo:
+  ///   1 letra del nombre + primer apellido   → "jperez"
+  ///   2 letras del nombre + primer apellido   → "juperez"  (si "jperez" ya existe)
+  ///   ...hasta agotar el nombre
+  ///   Si aun así hay colisión: nombre completo + apellido + sufijo numérico
+  ///
+  /// La unicidad la garantiza Firebase Auth mismo (error `email-already-in-use`),
+  /// sin necesitar consultas ni reglas de Firestore adicionales.
+  Future<({String uid, String username, String temporaryPassword})>
+      _createStudentAuthAccount(String nombres, String apellidos) async {
+    final nombreNorm = _normalizeForUsername(nombres);
+    final apellidosParts = apellidos.trim().split(RegExp(r'\s+'));
+    final primerApellido = apellidosParts.isNotEmpty ? apellidosParts.first : '';
+    final apellidoNorm = _normalizeForUsername(primerApellido);
+
+    if (nombreNorm.isEmpty || apellidoNorm.isEmpty) {
+      throw StudentException(
+          'Nombres y apellidos deben contener al menos una letra');
+    }
+
+    final temporaryPassword = _generateTemporaryPassword();
+
+    FirebaseApp? secondaryApp;
     try {
       // Verificar si ya existe una instancia con ese nombre y eliminarla
       try {
@@ -75,20 +126,46 @@ class StudentService {
         name: _secondaryAppName,
         options: Firebase.app().options,
       );
-
-      // Crear cuenta en la instancia secundaria
-      // El padre NO se desloguea porque esto opera en otra instancia
       final secondaryAuth = fb.FirebaseAuth.instanceFor(app: secondaryApp);
-      final credential = await secondaryAuth.createUserWithEmailAndPassword(
-        email: email.trim().toLowerCase(),
-        password: _defaultStudentPassword,
-      );
 
-      if (credential.user == null) {
-        throw StudentException('Error al crear cuenta del estudiante');
+      Future<({String uid, String username, String temporaryPassword})?>
+          tryCandidate(String candidate) async {
+        try {
+          final credential = await secondaryAuth.createUserWithEmailAndPassword(
+            email: _buildSyntheticEmail(candidate),
+            password: temporaryPassword,
+          );
+          if (credential.user == null) {
+            throw StudentException('Error al crear cuenta del estudiante');
+          }
+          return (
+            uid: credential.user!.uid,
+            username: candidate,
+            temporaryPassword: temporaryPassword,
+          );
+        } on fb.FirebaseAuthException catch (e) {
+          if (e.code == 'email-already-in-use') return null;
+          rethrow;
+        }
       }
 
-      return credential.user!.uid;
+      // Paso 1: 1 letra del nombre, 2 letras, 3... hasta agotar el nombre
+      for (var n = 1; n <= nombreNorm.length; n++) {
+        final candidate = nombreNorm.substring(0, n) + apellidoNorm;
+        final result = await tryCandidate(candidate);
+        if (result != null) return result;
+      }
+
+      // Paso 2: último recurso — nombre completo + apellido + sufijo numérico
+      final fullBase = nombreNorm + apellidoNorm;
+      for (var suffix = 2; suffix <= 99; suffix++) {
+        final result = await tryCandidate('$fullBase$suffix');
+        if (result != null) return result;
+      }
+
+      throw StudentException(
+          'No se pudo generar un usuario único para este estudiante. '
+          'Intenta con un nombre o apellido distinto.');
     } finally {
       // Siempre eliminar la instancia secundaria al terminar
       // tanto si tuvo éxito como si falló
@@ -143,13 +220,18 @@ class StudentService {
 
   /// Crear nuevo estudiante
   ///
-  /// Flujo:
-  /// 1. Crea cuenta Auth via instancia secundaria (sin afectar sesión del padre)
+  /// Flujo (Fase 5.3 — sin email obligatorio, sin Cloud Functions):
+  /// 1. Genera un `username` único (ej: "jperez") y crea la cuenta Auth
+  ///    correspondiente vía instancia secundaria (sin afectar sesión del padre)
   /// 2. Fuerza refresh del token del padre para que Firestore lo reconozca
-  /// 3. WriteBatch: crea students/{uid} y users/{uid} juntos
-  Future<Student> createStudent({
-    required String name,
-    required String email,
+  /// 3. WriteBatch: crea students/{uid} y users/{uid} juntos,
+  ///    marcando `mustChangePassword: true`
+  /// 4. Devuelve el Student creado + la clave temporal en texto plano
+  ///    (única vez que existe — el padre debe copiarla/compartirla ahora)
+  Future<({Student student, String temporaryPassword})> createStudent({
+    required String nombres,
+    required String apellidos,
+    String? email,
     required String parentId,
     StudentGrade grade = StudentGrade.primaria,
     DateTime? birthDate,
@@ -157,32 +239,24 @@ class StudentService {
     StudentAvatar avatar = StudentAvatar.student1,
   }) async {
     try {
-      // Paso 1 — Crear cuenta Auth en instancia secundaria
-      // La sesión del padre permanece intacta
-      final String studentUID;
-      try {
-        studentUID = await _createStudentAuthAccount(email);
-      } on fb.FirebaseAuthException catch (e) {
-        switch (e.code) {
-          case 'email-already-in-use':
-            throw StudentException(
-                'Ya existe una cuenta con ese email. '
-                'El estudiante puede usar ese email con la clave "estudiante123".');
-          default:
-            throw StudentException('Error al crear cuenta: ${e.message}');
-        }
-      }
+      // Paso 1 — Generar username único y crear cuenta Auth
+      final authResult =
+          await _createStudentAuthAccount(nombres, apellidos);
 
       // Paso 2 — Forzar refresh del token del padre
       // Garantiza que Firestore use el token correcto del padre para el batch
       await _firebaseAuth.currentUser?.getIdToken(true);
 
       final now = DateTime.now();
+      final cleanEmail =
+          (email != null && email.trim().isNotEmpty) ? email.trim().toLowerCase() : null;
 
       final student = Student(
-        id: studentUID, // ← ID del documento = UID de Firebase Auth
-        name: name,
-        email: email.trim().toLowerCase(),
+        id: authResult.uid, // ← ID del documento = UID de Firebase Auth
+        nombres: nombres.trim(),
+        apellidos: apellidos.trim(),
+        username: authResult.username,
+        email: cleanEmail,
         parentId: parentId,
         createdAt: now,
         grade: grade,
@@ -196,21 +270,23 @@ class StudentService {
 
       // Documento en students/{uid}
       batch.set(
-        _firestore.collection(_collection).doc(studentUID),
+        _firestore.collection(_collection).doc(authResult.uid),
         _toFirestore(student),
       );
 
       // Documento en users/{uid} — necesario para el login del estudiante
       batch.set(
-        _firestore.collection(_usersCollection).doc(studentUID),
+        _firestore.collection(_usersCollection).doc(authResult.uid),
         {
-          'id': studentUID,
-          'email': email.trim().toLowerCase(),
-          'name': name.trim(),
+          'id': authResult.uid,
+          'email': _buildSyntheticEmail(authResult.username),
+          'username': authResult.username,
+          'name': student.name,
           'role': UserRole.student.toString().split('.').last,
           'parentId': parentId,
           'assignedSubjects': [],
           'isActive': true,
+          'mustChangePassword': true,
           'createdAt': Timestamp.fromDate(now),
           'lastLogin': null,
         },
@@ -218,9 +294,11 @@ class StudentService {
 
       await batch.commit();
 
-      return student;
+      return (student: student, temporaryPassword: authResult.temporaryPassword);
     } on StudentException {
       rethrow;
+    } on fb.FirebaseAuthException catch (e) {
+      throw StudentException('Error al crear cuenta del estudiante: ${e.message}');
     } catch (e) {
       throw StudentException('Error al crear estudiante: $e');
     }
@@ -243,7 +321,7 @@ class StudentService {
       try {
         batch.update(
           _firestore.collection(_usersCollection).doc(student.id),
-          {'name': student.name, 'updatedAt': Timestamp.now()},
+          {'name': updatedStudent.name, 'updatedAt': Timestamp.now()},
         );
       } catch (_) {}
 
@@ -373,7 +451,7 @@ class StudentService {
     }
   }
 
-  /// Buscar estudiantes por nombre o email dentro de un padre
+  /// Buscar estudiantes por nombre, usuario o email dentro de un padre
   Future<List<Student>> searchStudents(String query, String parentId) async {
     final students = await getStudentsByParent(parentId);
     final lowercaseQuery = query.toLowerCase();
@@ -381,7 +459,8 @@ class StudentService {
     return students
         .where((student) =>
             student.name.toLowerCase().contains(lowercaseQuery) ||
-            student.email.toLowerCase().contains(lowercaseQuery) ||
+            student.username.toLowerCase().contains(lowercaseQuery) ||
+            (student.email?.toLowerCase().contains(lowercaseQuery) ?? false) ||
             (student.notes?.toLowerCase().contains(lowercaseQuery) ?? false))
         .toList();
   }
@@ -414,12 +493,15 @@ class StudentService {
     }
   }
 
-  /// Verificar si un email ya está en uso
+  /// Verificar si un email ya está en uso.
+  /// El email ahora es opcional (Fase 5.3) — solo aplica si el padre
+  /// decide asignarle uno (ej. integración futura con colegios).
   Future<bool> isEmailInUse(
     String email, {
     String? excludeStudentId,
     String? parentId,
   }) async {
+    if (email.trim().isEmpty) return false;
     try {
       var query = _firestore
           .collection(_collection)
@@ -455,7 +537,8 @@ class StudentService {
     return students.length;
   }
 
-  /// Sincronizar emails inválidos
+  /// Sincronizar emails inválidos (mantenimiento — ya no es crítico
+  /// desde que el email es opcional, se conserva para datos legacy)
   Future<void> syncStudentsWithUsers() async {
     try {
       final snapshot = await _firestore
@@ -470,7 +553,7 @@ class StudentService {
         final data = doc.data();
         final email = data['email'] as String? ?? '';
 
-        if (email.isEmpty || !email.contains('@')) {
+        if (email.isNotEmpty && !email.contains('@')) {
           final name = data['name'] as String? ?? 'estudiante';
           final fixedEmail =
               '${name.toLowerCase().replaceAll(' ', '.')}@estudiante.com';

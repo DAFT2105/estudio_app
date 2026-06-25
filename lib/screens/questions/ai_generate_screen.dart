@@ -44,6 +44,7 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
   List<AIGeneratedQuestion> _generatedQuestions = [];
   String? _errorMessage;
   String? _detectedTopic; // tema detectado por Gemini desde la imagen
+  QuestionPurpose _purpose = QuestionPurpose.practice; // modo del lote a guardar
 
   @override
   void initState() {
@@ -328,6 +329,30 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
               Text(
                 'Selecciona las que quieres guardar',
                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 12),
+              const Text('¿Para qué modo son estas preguntas?',
+                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                children: QuestionPurpose.values.map((p) {
+                  final isSelected = _purpose == p;
+                  return ChoiceChip(
+                    label: Text(p.displayName),
+                    avatar: Icon(p.icon,
+                        size: 16,
+                        color: isSelected ? p.color : Colors.grey[600]),
+                    selected: isSelected,
+                    onSelected: (_) => setState(() => _purpose = p),
+                    selectedColor: p.color.withOpacity(0.2),
+                    labelStyle: TextStyle(
+                      color: isSelected ? p.color : Colors.grey[700],
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  );
+                }).toList(),
               ),
             ],
           ),
@@ -962,6 +987,7 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
           explanation: q.explanation,
           topic: q.topic,
           difficulty: q.difficulty,
+          purpose: _purpose,
         );
         if (success) savedCount++;
       }

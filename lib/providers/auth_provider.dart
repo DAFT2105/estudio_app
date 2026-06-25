@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../repositories/auth_repository.dart';
 import '../services/auth_service.dart';
+import '../utils/app_constants.dart';
 
 enum AuthStatus {
   loading,
@@ -51,25 +52,63 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Login con email y password
-  Future<bool> login(String email, String password) async {
+  // Login con Google — solo para padres
+  Future<bool> loginWithGoogle() async {
     try {
       _setStatus(AuthStatus.loading);
       _clearError();
 
-      // Validaciones básicas
-      if (email.trim().isEmpty || password.trim().isEmpty) {
-        _setError('Email y contraseña son requeridos');
+      final user = await _authRepository.loginWithGoogle();
+
+      if (user == null) {
+        // null = usuario canceló el selector de cuentas (no es un error)
+        _setStatus(AuthStatus.unauthenticated);
         return false;
       }
 
-      if (!_isValidEmail(email)) {
-        _setError('Formato de email inválido');
+      _currentUser = user;
+      _setStatus(AuthStatus.authenticated);
+      return true;
+    } on AuthException catch (e) {
+      _setError(e.message);
+      return false;
+    } catch (e) {
+      _setError('Error al iniciar sesión con Google: $e');
+      return false;
+    }
+  }
+
+  // Login con email (padre/admin) o usuario (estudiante sin correo propio)
+  Future<bool> login(String identifier, String password) async {
+    try {
+      _setStatus(AuthStatus.loading);
+      _clearError();
+
+      final trimmedIdentifier = identifier.trim();
+
+      // Validaciones básicas
+      if (trimmedIdentifier.isEmpty || password.trim().isEmpty) {
+        _setError('Usuario/Email y contraseña son requeridos');
         return false;
+      }
+
+      String resolvedEmail;
+      if (trimmedIdentifier.contains('@')) {
+        // Padre, admin, o (a futuro) estudiante con correo institucional
+        if (!_isValidEmail(trimmedIdentifier)) {
+          _setError('Formato de email inválido');
+          return false;
+        }
+        resolvedEmail = trimmedIdentifier;
+      } else {
+        // Estudiante sin correo propio — se loguea con su "usuario"
+        // (ej: jperez), que internamente mapea a un email sintético
+        resolvedEmail =
+            '${trimmedIdentifier.toLowerCase()}@${AppConstants.studentEmailDomain}';
       }
 
       // Usar repository para autenticación
-      final user = await _authRepository.login(email.trim(), password.trim());
+      final user = await _authRepository.login(resolvedEmail, password.trim());
       
       if (user != null) {
         _currentUser = user;
@@ -228,6 +267,25 @@ class AuthProvider extends ChangeNotifier {
       rethrow;
     } catch (e) {
       throw AuthException('Error al obtener usuarios: $e');
+    }
+  }
+
+  // Activar/desactivar la cuenta de cualquier usuario (solo para admin)
+  Future<bool> toggleUserActive(User user) async {
+    try {
+      if (_currentUser == null || !_currentUser!.hasPermission('manage_users')) {
+        throw const AuthException('No tienes permisos para gestionar usuarios');
+      }
+
+      final updated = user.copyWith(isActive: !user.isActive);
+      final result = await _authRepository.updateUser(updated);
+      return result != null;
+    } on AuthException catch (e) {
+      _setError(e.message);
+      return false;
+    } catch (e) {
+      _setError('Error al actualizar usuario: $e');
+      return false;
     }
   }
 

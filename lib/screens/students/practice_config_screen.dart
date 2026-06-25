@@ -41,10 +41,21 @@ class _PracticeConfigScreenState extends State<PracticeConfigScreen> {
     
     final questionProvider = context.read<QuestionProvider>();
     await questionProvider.loadQuestionsBySubject(widget.subject.id);
+
+    // Solo preguntas que aplican a Práctica (las legacy sin modo definido
+    // cuentan para ambos — ver Question.appliesTo)
+    final practiceQuestions = questionProvider.questions
+        .where((q) => q.appliesTo(QuestionPurpose.practice))
+        .toList();
     
     setState(() {
-      _availableQuestions = questionProvider.questions.length;
-      _availableTopics = questionProvider.uniqueTopics;
+      _availableQuestions = practiceQuestions.length;
+      _availableTopics = practiceQuestions
+          .where((q) => q.topic != null && q.topic!.isNotEmpty)
+          .map((q) => q.topic!)
+          .toSet()
+          .toList()
+        ..sort();
       
       // CORREGIDO: Ajustar valor inicial según preguntas disponibles
       if (_availableQuestions > 0) {
@@ -496,6 +507,7 @@ class _PracticeConfigScreenState extends State<PracticeConfigScreen> {
       count: _questionCount,
       difficulty: _selectedDifficulty,
       topic: _selectedTopic,
+      purpose: QuestionPurpose.practice,
     );
 
     if (questions.isEmpty) {

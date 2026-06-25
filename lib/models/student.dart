@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 class Student {
   final String id;
-  final String name;
-  final String email;
+  final String nombres;
+  final String apellidos;
+  final String username; // Usuario de acceso (sin @), único — generado automáticamente
+  final String? email; // Opcional — reservado para futura integración con colegios
   final String parentId; // ID del padre que lo creó
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -18,8 +20,10 @@ class Student {
 
   const Student({
     required this.id,
-    required this.name,
-    required this.email,
+    required this.nombres,
+    required this.apellidos,
+    required this.username,
+    this.email,
     required this.parentId,
     required this.createdAt,
     this.updatedAt,
@@ -31,12 +35,17 @@ class Student {
     this.avatar = StudentAvatar.student1,
   });
 
+  /// Nombre completo — calculado a partir de nombres + apellidos.
+  /// Se mantiene como getter (no como campo) para que todas las pantallas
+  /// que ya usan `student.name` sigan funcionando sin cambios.
+  String get name => '$nombres $apellidos'.trim();
+
   // Obtener edad calculada
   int? get age {
     if (birthDate == null) return null;
     final now = DateTime.now();
     int age = now.year - birthDate!.year;
-    if (now.month < birthDate!.month || 
+    if (now.month < birthDate!.month ||
         (now.month == birthDate!.month && now.day < birthDate!.day)) {
       age--;
     }
@@ -63,13 +72,27 @@ class Student {
 
   // Factory constructor desde JSON
   factory Student.fromJson(Map<String, dynamic> json) {
+    // Compatibilidad con documentos creados antes de la Fase 5.3
+    // (tenían un único campo `name` en vez de nombres/apellidos/username)
+    final legacyName = json['name'] as String?;
+    String nombres = json['nombres'] as String? ?? '';
+    String apellidos = json['apellidos'] as String? ?? '';
+
+    if (nombres.isEmpty && legacyName != null && legacyName.trim().isNotEmpty) {
+      final parts = legacyName.trim().split(RegExp(r'\s+'));
+      nombres = parts.first;
+      apellidos = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    }
+
     return Student(
       id: json['id'] as String,
-      name: json['name'] as String,
-      email: json['email'] as String,
+      nombres: nombres,
+      apellidos: apellidos,
+      username: json['username'] as String? ?? '',
+      email: json['email'] as String?,
       parentId: json['parentId'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] != null 
+      updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
           : null,
       isActive: json['isActive'] as bool? ?? true,
@@ -80,7 +103,7 @@ class Student {
         (e) => e.toString().split('.').last == json['grade'],
         orElse: () => StudentGrade.primaria,
       ),
-      birthDate: json['birthDate'] != null 
+      birthDate: json['birthDate'] != null
           ? DateTime.parse(json['birthDate'] as String)
           : null,
       notes: json['notes'] as String?,
@@ -95,7 +118,10 @@ class Student {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'name': name,
+      'nombres': nombres,
+      'apellidos': apellidos,
+      'name': name, // se mantiene por compatibilidad / búsquedas simples en memoria
+      'username': username,
       'email': email,
       'parentId': parentId,
       'createdAt': createdAt.toIso8601String(),
@@ -112,7 +138,9 @@ class Student {
   // Crear copia con cambios
   Student copyWith({
     String? id,
-    String? name,
+    String? nombres,
+    String? apellidos,
+    String? username,
     String? email,
     String? parentId,
     DateTime? createdAt,
@@ -126,7 +154,9 @@ class Student {
   }) {
     return Student(
       id: id ?? this.id,
-      name: name ?? this.name,
+      nombres: nombres ?? this.nombres,
+      apellidos: apellidos ?? this.apellidos,
+      username: username ?? this.username,
       email: email ?? this.email,
       parentId: parentId ?? this.parentId,
       createdAt: createdAt ?? this.createdAt,
@@ -142,7 +172,7 @@ class Student {
 
   @override
   String toString() {
-    return 'Student(id: $id, name: $name, parentId: $parentId, grade: ${grade.displayName})';
+    return 'Student(id: $id, name: $name, username: $username, parentId: $parentId, grade: ${grade.displayName})';
   }
 
   @override

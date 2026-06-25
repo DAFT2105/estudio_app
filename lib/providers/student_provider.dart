@@ -34,19 +34,25 @@ class StudentProvider extends ChangeNotifier {
   StudentProvider({required StudentRepository studentRepository}) 
       : _studentRepository = studentRepository;
 
-  /// Cargar estudiantes del padre actual
-  Future<void> loadStudents(String parentId) async {
+  /// Cargar estudiantes — del padre actual (por defecto) o todos si es admin.
+  /// `userRole` es opcional con valor por defecto 'parent' para no romper
+  /// las llamadas existentes que solo pasan el ID.
+  Future<void> loadStudents(String userId, {String userRole = 'parent'}) async {
     try {
       _setStatus(StudentStatus.loading);
       _clearError();
 
-      final loadedStudents = await _studentRepository.getStudentsByParent(parentId);
-      
+      final loadedStudents = userRole == 'admin'
+          ? await _studentRepository.getAllStudents()
+          : await _studentRepository.getStudentsByParent(userId);
+
       _students = loadedStudents;
       _setStatus(loadedStudents.isEmpty ? StudentStatus.empty : StudentStatus.loaded);
-      
-      // Cargar estadísticas también
-      await _loadStats(parentId);
+
+      // Las estadísticas son por padre — no aplican al admin viendo todo
+      if (userRole != 'admin') {
+        await _loadStats(userId);
+      }
     } on StudentException catch (e) {
       _setError(e.message);
     } catch (e) {
@@ -54,10 +60,14 @@ class StudentProvider extends ChangeNotifier {
     }
   }
 
-  /// Crear nuevo estudiante
-  Future<bool> createStudent({
-    required String name,
-    required String email,
+  /// Crear nuevo estudiante.
+  /// Devuelve el username generado + la clave temporal (solo existe en
+  /// este momento) para que la UI pueda mostrarlas al padre, o `null` si
+  /// falló (el mensaje de error queda disponible en `errorMessage`).
+  Future<({String username, String temporaryPassword})?> createStudent({
+    required String nombres,
+    required String apellidos,
+    String? email,
     required String parentId,
     StudentGrade grade = StudentGrade.primaria,
     DateTime? birthDate,
@@ -67,8 +77,9 @@ class StudentProvider extends ChangeNotifier {
     try {
       _clearError();
 
-      final newStudent = await _studentRepository.createStudent(
-        name: name,
+      final result = await _studentRepository.createStudent(
+        nombres: nombres,
+        apellidos: apellidos,
         email: email,
         parentId: parentId,
         grade: grade,
@@ -78,19 +89,22 @@ class StudentProvider extends ChangeNotifier {
       );
 
       // Agregar a la lista local
-      _students.add(newStudent);
+      _students.add(result.student);
       _setStatus(StudentStatus.loaded);
       
       // Actualizar estadísticas
       await _loadStats(parentId);
       
-      return true;
+      return (
+        username: result.student.username,
+        temporaryPassword: result.temporaryPassword,
+      );
     } on StudentException catch (e) {
       _setError(e.message);
-      return false;
+      return null;
     } catch (e) {
       _setError('Error al crear estudiante: $e');
-      return false;
+      return null;
     }
   }
 
@@ -315,4 +329,3 @@ class StudentProvider extends ChangeNotifier {
     return _students.fold(0, (total, student) => total + student.subjectCount);
   }
 }
-

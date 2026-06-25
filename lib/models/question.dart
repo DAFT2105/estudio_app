@@ -13,6 +13,8 @@ class Question {
   final String? explanation; // Explicación de la respuesta
   final String? topic; // Tema/subtema (opcional)
   final QuestionDifficulty difficulty; // Nivel de dificultad
+  final QuestionPurpose? purpose; // Práctica o Examen — null = preguntas
+  // creadas antes de este campo (Fase 7), se tratan como válidas para ambos
   final DateTime createdAt;
   final DateTime? updatedAt;
   final bool isActive;
@@ -29,6 +31,7 @@ class Question {
     this.explanation,
     this.topic,
     this.difficulty = QuestionDifficulty.medium,
+    this.purpose,
     required this.createdAt,
     this.updatedAt,
     this.isActive = true,
@@ -50,6 +53,14 @@ class Question {
     
     if (index == -1) return null;
     return String.fromCharCode(65 + index); // 65 = 'A'
+  }
+
+  /// ¿Esta pregunta aplica para el modo dado?
+  /// Las preguntas sin `purpose` definido (creadas antes de este campo)
+  /// se consideran válidas para AMBOS modos — no desaparecen de ningún
+  /// lado por no haber sido re-etiquetadas.
+  bool appliesTo(QuestionPurpose mode) {
+    return purpose == null || purpose == mode;
   }
 
   // Validar que la pregunta esté bien formada
@@ -90,6 +101,14 @@ class Question {
         (e) => e.toString().split('.').last == json['difficulty'],
         orElse: () => QuestionDifficulty.medium,
       ),
+      // Si el documento no tiene 'purpose' (preguntas anteriores a este
+      // campo), queda null — appliesTo() las trata como válidas para ambos
+      purpose: json['purpose'] != null
+          ? QuestionPurpose.values.firstWhere(
+              (e) => e.toString().split('.').last == json['purpose'],
+              orElse: () => QuestionPurpose.practice,
+            )
+          : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
@@ -112,6 +131,7 @@ class Question {
       'explanation': explanation,
       'topic': topic,
       'difficulty': difficulty.toString().split('.').last,
+      'purpose': purpose?.toString().split('.').last,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
       'isActive': isActive,
@@ -131,6 +151,7 @@ class Question {
     String? explanation,
     String? topic,
     QuestionDifficulty? difficulty,
+    QuestionPurpose? purpose,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isActive,
@@ -147,6 +168,7 @@ class Question {
       explanation: explanation ?? this.explanation,
       topic: topic ?? this.topic,
       difficulty: difficulty ?? this.difficulty,
+      purpose: purpose ?? this.purpose,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isActive: isActive ?? this.isActive,
@@ -249,6 +271,44 @@ extension QuestionDifficultyExtension on QuestionDifficulty {
         return 2;
       case QuestionDifficulty.hard:
         return 3;
+    }
+  }
+}
+
+/// Para qué modo está pensada la pregunta — Fase 7.
+/// Exclusivo: una pregunta es para Práctica O para Examen, no ambas.
+/// Las preguntas creadas antes de este campo quedan con `purpose == null`
+/// y se tratan como válidas para ambos modos (ver `Question.appliesTo`).
+enum QuestionPurpose {
+  practice,
+  exam,
+}
+
+extension QuestionPurposeExtension on QuestionPurpose {
+  String get displayName {
+    switch (this) {
+      case QuestionPurpose.practice:
+        return 'Práctica';
+      case QuestionPurpose.exam:
+        return 'Examen';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case QuestionPurpose.practice:
+        return Icons.fitness_center;
+      case QuestionPurpose.exam:
+        return Icons.timer;
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case QuestionPurpose.practice:
+        return Colors.green;
+      case QuestionPurpose.exam:
+        return Colors.deepOrange;
     }
   }
 }

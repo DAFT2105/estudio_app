@@ -2,11 +2,13 @@
 
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user.dart';
 
 class AuthService {
   final fb.FirebaseAuth _firebaseAuth = fb.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   static const String _usersCollection = 'users';
 
@@ -28,6 +30,69 @@ class AuthService {
     }
   }
 
+  /// Login con Google — exclusivo para padres.
+  ///
+  /// Flujo:
+  /// 1. Muestra el selector de cuenta de Google del dispositivo
+  /// 2. Autentica en Firebase con el credential de Google
+  /// 3. Si es el primer ingreso del usuario (no tiene doc en `users/`),
+  ///    crea automáticamente su perfil con rol "parent"
+  /// 4. Devuelve el User con su perfil completo
+  ///
+  /// Devuelve `null` si el usuario canceló el selector de cuentas.
+  Future<User?> signInWithGoogle() async {
+    try {
+      // Paso 1 — mostrar selector de cuentas de Google
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null; // usuario canceló
+
+      // Paso 2 — obtener tokens de Google y autenticar en Firebase
+      final googleAuth = await googleUser.authentication;
+      final credential = fb.GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final fbCredential =
+          await _firebaseAuth.signInWithCredential(credential);
+
+      if (fbCredential.user == null) return null;
+
+      final uid = fbCredential.user!.uid;
+      final isNewUser = fbCredential.additionalUserInfo?.isNewUser ?? false;
+
+      // Paso 3 — crear perfil en Firestore si es primer login
+      if (isNewUser) {
+        final now = DateTime.now();
+        final newUser = User(
+          id: uid,
+          email: googleUser.email,
+          name: googleUser.displayName ?? googleUser.email.split('@').first,
+          role: UserRole.parent, // Google Sign-In es solo para padres
+          createdAt: now,
+          isActive: true,
+        );
+        await _firestore
+            .collection(_usersCollection)
+            .doc(uid)
+            .set(_toFirestore(newUser));
+        return newUser;
+      }
+
+      // Paso 4 — usuario existente: leer su perfil de Firestore
+      return await _getUserProfile(uid);
+    } on fb.FirebaseAuthException catch (e) {
+      throw AuthException(_mapFirebaseError(e.code));
+    } catch (e) {
+      // Si el error viene de que el usuario canceló (sign_in_canceled),
+      // no lo propagamos — la UI lo maneja via el null de retorno
+      if (e.toString().contains('sign_in_canceled') ||
+          e.toString().contains('network_error')) {
+        return null;
+      }
+      throw AuthException('Error al iniciar sesión con Google: $e');
+    }
+  }
+
   /// Obtener usuario actualmente autenticado
   Future<User?> getSavedUser() async {
     try {
@@ -41,9 +106,14 @@ class AuthService {
     }
   }
 
-  /// Cerrar sesión
+  /// Cerrar sesión — también cierra la sesión de Google si aplica
   Future<void> clearSession() async {
     await _firebaseAuth.signOut();
+    // Cerrar también la sesión de Google para forzar el selector de cuentas
+    // en el próximo login (en vez de re-autenticar en silencio)
+    if (await _googleSignIn.isSignedIn()) {
+      await _googleSignIn.signOut();
+    }
   }
 
   /// Registrar nuevo usuario
@@ -78,7 +148,6 @@ class AuthService {
         assignedSubjects: assignedSubjects ?? [],
       );
 
-      // Guardar en Firestore con Timestamps nativos
       await _firestore
           .collection(_usersCollection)
           .doc(uid)
@@ -131,9 +200,7 @@ class AuthService {
     try {
       final snapshot =
           await _firestore.collection(_usersCollection).get();
-      return snapshot.docs
-          .map((doc) => _fromDoc(doc))
-          .toList();
+      return snapshot.docs.map((doc) => _fromDoc(doc)).toList();
     } catch (e) {
       throw AuthException('Error al obtener usuarios: $e');
     }
@@ -143,7 +210,6 @@ class AuthService {
   // HELPERS PRIVADOS
   // ─────────────────────────────────────────────
 
-  /// Obtener perfil de usuario desde Firestore por UID
   Future<User?> _getUserProfile(String uid) async {
     try {
       final doc = await _firestore
@@ -161,13 +227,11 @@ class AuthService {
     }
   }
 
-  /// Convierte un DocumentSnapshot a User manejando Timestamps y Strings
   User _fromDoc(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return User.fromJson({
       ...data,
       'id': doc.id,
-      // Maneja tanto Timestamp (Firestore) como String (legacy/manual)
       'createdAt': _parseDate(data['createdAt']),
       'lastLogin': data['lastLogin'] != null
           ? _parseDate(data['lastLogin'])
@@ -175,7 +239,6 @@ class AuthService {
     });
   }
 
-  /// Convierte un User a Map con Timestamps nativos de Firestore
   Map<String, dynamic> _toFirestore(User user) {
     final json = user.toJson();
     return {
@@ -187,7 +250,6 @@ class AuthService {
     };
   }
 
-  /// Convierte Timestamp o String a ISO String para User.fromJson
   String _parseDate(dynamic value) {
     if (value == null) return DateTime.now().toIso8601String();
     if (value is Timestamp) return value.toDate().toIso8601String();
@@ -195,7 +257,6 @@ class AuthService {
     return DateTime.now().toIso8601String();
   }
 
-  /// Mapear códigos de error de Firebase a mensajes en español
   String _mapFirebaseError(String code) {
     switch (code) {
       case 'user-not-found':
@@ -218,12 +279,13 @@ class AuthService {
         return 'Error de conexión. Verifica tu internet';
       case 'requires-recent-login':
         return 'Por seguridad, inicia sesión nuevamente';
+      case 'account-exists-with-different-credential':
+        return 'Ya existe una cuenta con ese email usando otro método de login';
       default:
         return 'Error de autenticación: $code';
     }
   }
 
-  /// Guardar sesión — Firebase maneja la sesión automáticamente
   Future<void> saveSession(User user) async {}
 }
 

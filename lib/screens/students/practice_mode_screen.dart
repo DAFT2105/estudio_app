@@ -30,6 +30,7 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
   bool _isCorrect = false;
   int _correctAnswers = 0;
   late DateTime _startTime; // Para calcular duración
+  final TextEditingController _shortAnswerController = TextEditingController();
 
   Question get _currentQuestion => widget.questions[_currentQuestionIndex];
   bool get _isLastQuestion =>
@@ -41,6 +42,12 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
   void initState() {
     super.initState();
     _startTime = DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _shortAnswerController.dispose();
+    super.dispose();
   }
 
   @override
@@ -244,7 +251,6 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
   }
 
   Widget _buildShortAnswerOption() {
-    final controller = TextEditingController();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -255,7 +261,8 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             TextField(
-              controller: controller,
+              controller: _shortAnswerController,
+              enabled: !_isAnswerChecked,
               decoration: const InputDecoration(
                 hintText: 'Tu respuesta aquí...',
                 border: OutlineInputBorder(),
@@ -486,6 +493,7 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
           _selectedAnswer = null;
           _isAnswerChecked = false;
           _isCorrect = false;
+          _shortAnswerController.clear();
         });
       }
     }

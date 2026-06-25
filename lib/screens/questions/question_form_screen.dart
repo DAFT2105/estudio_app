@@ -35,6 +35,7 @@ class _QuestionFormScreenState extends State<QuestionFormScreen> {
   Subject? _selectedSubject;
   QuestionType _selectedType = QuestionType.multipleChoice;
   QuestionDifficulty _selectedDifficulty = QuestionDifficulty.medium;
+  QuestionPurpose? _selectedPurpose;
   int _correctOptionIndex = 0;
   String _correctAnswer = '';
   bool _isLoading = false;
@@ -87,6 +88,7 @@ class _QuestionFormScreenState extends State<QuestionFormScreen> {
     
     _selectedType = question.type;
     _selectedDifficulty = question.difficulty;
+    _selectedPurpose = question.purpose;
     _selectedSubject = subjectProvider.getSubjectById(question.subjectId);
     
     // Cargar opciones según tipo
@@ -625,6 +627,43 @@ Widget _buildMultipleChoiceOptions() {
                 setState(() => _selectedDifficulty = value!);
               },
             ),
+
+            const SizedBox(height: 16),
+
+            // Modo de uso — Práctica o Examen (obligatorio para preguntas nuevas)
+            DropdownButtonFormField<QuestionPurpose>(
+              value: _selectedPurpose,
+              decoration: InputDecoration(
+                labelText: 'Modo de uso *',
+                helperText: isEditing && widget.questionToEdit!.purpose == null
+                    ? 'Esta pregunta es de antes de este filtro — elige un modo para guardarla'
+                    : 'Define si aparece en Práctica o en Examen',
+                prefixIcon: const Icon(Icons.tune),
+                border: const OutlineInputBorder(),
+              ),
+              hint: const Text('Selecciona un modo'),
+              items: QuestionPurpose.values.map((purpose) {
+                return DropdownMenuItem(
+                  value: purpose,
+                  child: Row(
+                    children: [
+                      Icon(purpose.icon, size: 18, color: purpose.color),
+                      const SizedBox(width: 8),
+                      Text(purpose.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => _selectedPurpose = value);
+              },
+              validator: (value) {
+                if (value == null) {
+                  return 'Selecciona si es para Práctica o Examen';
+                }
+                return null;
+              },
+            ),
             
             const SizedBox(height: 16),
             
@@ -761,6 +800,7 @@ Widget _buildMultipleChoiceOptions() {
               ? null 
               : _topicController.text.trim(),
           difficulty: _selectedDifficulty,
+          purpose: _selectedPurpose,
           updatedAt: DateTime.now(),
         );
 
@@ -781,6 +821,7 @@ Widget _buildMultipleChoiceOptions() {
               ? null 
               : _topicController.text.trim(),
           difficulty: _selectedDifficulty,
+          purpose: _selectedPurpose!,
         );
         action = 'creada';
       }

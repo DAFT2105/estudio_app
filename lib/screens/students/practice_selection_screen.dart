@@ -5,9 +5,12 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/subject_provider.dart';
 import '../../providers/question_provider.dart';
+import '../../providers/question_set_provider.dart';
+import '../../models/question.dart';
 import '../../models/subject.dart';
 import '../../utils/app_theme.dart';
 import 'practice_config_screen.dart';
+import 'question_set_chooser_screen.dart';
 
 class PracticeSelectionScreen extends StatefulWidget {
   const PracticeSelectionScreen({super.key});
@@ -263,11 +266,21 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
     );
   }
 
-  void _navigateToPracticeConfig(Subject subject) {
+  void _navigateToPracticeConfig(Subject subject) async {
+    final setProvider = context.read<QuestionSetProvider>();
+    await setProvider.loadSetsBySubject(subject.id, purpose: QuestionPurpose.practice);
+
+    if (!mounted) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PracticeConfigScreen(subject: subject),
+        builder: (context) => setProvider.sets.isEmpty
+            ? PracticeConfigScreen(subject: subject)
+            : QuestionSetChooserScreen(
+                subject: subject,
+                purpose: QuestionPurpose.practice,
+              ),
       ),
     );
   }

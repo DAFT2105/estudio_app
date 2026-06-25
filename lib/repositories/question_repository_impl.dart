@@ -57,6 +57,7 @@ class QuestionRepositoryImpl implements QuestionRepository {
     String? explanation,
     String? topic,
     QuestionDifficulty difficulty = QuestionDifficulty.medium,
+    required QuestionPurpose purpose,
   }) async {
     try {
       // Validaciones
@@ -114,6 +115,7 @@ class QuestionRepositoryImpl implements QuestionRepository {
         explanation: explanation?.trim(),
         topic: topic?.trim(),
         difficulty: difficulty,
+        purpose: purpose,
       );
     } on QuestionException {
       rethrow;
@@ -198,6 +200,7 @@ class QuestionRepositoryImpl implements QuestionRepository {
     int count = 10,
     QuestionDifficulty? difficulty,
     String? topic,
+    QuestionPurpose? purpose,
   }) async {
     try {
       return await _questionService.getRandomQuestions(
@@ -205,6 +208,7 @@ class QuestionRepositoryImpl implements QuestionRepository {
         count: count,
         difficulty: difficulty,
         topic: topic,
+        purpose: purpose,
       );
     } catch (e) {
       throw QuestionException('Error al obtener preguntas aleatorias: $e');
