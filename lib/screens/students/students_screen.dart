@@ -308,14 +308,19 @@ class _StudentsScreenState extends State<StudentsScreen> {
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
             ),
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
               children: [
-                _buildInfoChip(student.grade.displayName, Icons.school, student.grade.color),
-                const SizedBox(width: 8),
-                if (student.age != null) ...[
+                _buildInfoChip(
+                  student.grade.hasNumericLevel && student.gradeLevel != null
+                      ? '${student.grade.shortName}. ${student.gradeLevel}°'
+                      : student.grade.displayName,
+                  Icons.school,
+                  student.grade.color,
+                ),
+                if (student.age != null)
                   _buildInfoChip('${student.age} años', Icons.cake),
-                  const SizedBox(width: 8),
-                ],
                 _buildInfoChip('${student.subjectCount}', Icons.book),
               ],
             ),
@@ -376,7 +381,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
 
   Widget _buildInfoChip(String text, IconData icon, [Color? color]) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: (color ?? Colors.grey).withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -384,12 +389,12 @@ class _StudentsScreenState extends State<StudentsScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color ?? Colors.grey[600]),
-          const SizedBox(width: 4),
+          Icon(icon, size: 12, color: color ?? Colors.grey[600]),
+          const SizedBox(width: 3),
           Text(
             text,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               color: color ?? Colors.grey[600],
             ),
           ),
@@ -490,7 +495,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
             // Email — OCULTO TEMPORALMENTE (Fase 5.3.1), ver student_form_screen.dart
             // if (student.email != null && student.email!.isNotEmpty)
             //   _buildDetailRow('Email', student.email!),
-            _buildDetailRow('Grado', student.grade.displayName),
+            _buildDetailRow('Grado', student.gradeDisplayWithLevel),
             if (student.age != null) _buildDetailRow('Edad', '${student.age} años'),
             _buildDetailRow('Materias asignadas', '${student.subjectCount}'),
             if (student.notes != null && student.notes!.isNotEmpty)

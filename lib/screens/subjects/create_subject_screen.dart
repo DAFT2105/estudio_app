@@ -28,6 +28,7 @@ class _CreateSubjectScreenState extends State<CreateSubjectScreen> {
   
   SubjectColor _selectedColor = SubjectColor.blue;
   SubjectIcon _selectedIcon = SubjectIcon.book;
+  SubjectArea? _selectedArea;
   String _selectedDifficulty = 'Medio';
   TimeUnit _selectedTimeUnit = TimeUnit.hours;
   bool _isLoading = false;
@@ -56,6 +57,7 @@ class _CreateSubjectScreenState extends State<CreateSubjectScreen> {
     
     _selectedColor = subject.color;
     _selectedIcon = subject.icon;
+    _selectedArea = subject.area;
     _selectedDifficulty = subject.difficulty ?? 'Medio';
     _selectedTimeUnit = subject.timeUnit ?? TimeUnit.hours;
   }
@@ -404,6 +406,41 @@ class _CreateSubjectScreenState extends State<CreateSubjectScreen> {
                 }
               },
             ),
+
+            const SizedBox(height: 16),
+
+            // Área curricular — define el prompt de IA y, a futuro, el
+            // estilo visual de las preguntas de esta materia
+            DropdownButtonFormField<SubjectArea>(
+              value: _selectedArea,
+              decoration: InputDecoration(
+                labelText: 'Área *',
+                helperText: 'Usado para mejorar las preguntas generadas con IA',
+                prefixIcon: const Icon(Icons.category_outlined),
+              ),
+              hint: const Text('Selecciona el área'),
+              items: SubjectArea.values.map((area) {
+                return DropdownMenuItem(
+                  value: area,
+                  child: Row(
+                    children: [
+                      Icon(area.icon, size: 18, color: area.color),
+                      const SizedBox(width: 8),
+                      Text(area.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => _selectedArea = value);
+              },
+              validator: (value) {
+                if (value == null) {
+                  return 'Selecciona el área de la materia';
+                }
+                return null;
+              },
+            ),
           ],
         ),
       ),
@@ -497,6 +534,7 @@ class _CreateSubjectScreenState extends State<CreateSubjectScreen> {
           estimatedDuration: duration,
           timeUnit: duration != null ? _selectedTimeUnit : null,
           difficulty: _selectedDifficulty,
+          area: _selectedArea,
           updatedAt: DateTime.now(),
         );
 
@@ -518,6 +556,7 @@ class _CreateSubjectScreenState extends State<CreateSubjectScreen> {
           estimatedDuration: duration,
           timeUnit: duration != null ? _selectedTimeUnit : null,
           difficulty: _selectedDifficulty,
+          area: _selectedArea!,
         );
         action = 'creada';
       }

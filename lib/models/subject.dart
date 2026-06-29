@@ -16,6 +16,7 @@ class Subject {
   final int? estimatedDuration; // Duración estimada (número)
   final TimeUnit? timeUnit; // NUEVO: Unidad de tiempo (horas/minutos)
   final String? difficulty; // Fácil, Medio, Difícil
+  final SubjectArea area; // Área curricular — usado para IA y diseño visual
 
   const Subject({
     required this.id,
@@ -31,6 +32,7 @@ class Subject {
     this.estimatedDuration,
     this.timeUnit,
     this.difficulty,
+    this.area = SubjectArea.otra,
   });
 
   // Verificar si un estudiante está asignado
@@ -96,6 +98,10 @@ class Subject {
             )
           : null,
       difficulty: json['difficulty'] as String?,
+      area: SubjectArea.values.firstWhere(
+        (e) => e.toString().split('.').last == json['area'],
+        orElse: () => SubjectArea.otra,
+      ),
     );
   }
 
@@ -115,6 +121,7 @@ class Subject {
       'estimatedDuration': estimatedDuration,
       'timeUnit': timeUnit?.toString().split('.').last,
       'difficulty': difficulty,
+      'area': area.toString().split('.').last,
     };
   }
 
@@ -133,6 +140,7 @@ class Subject {
     int? estimatedDuration,
     TimeUnit? timeUnit,
     String? difficulty,
+    SubjectArea? area,
   }) {
     return Subject(
       id: id ?? this.id,
@@ -148,6 +156,7 @@ class Subject {
       estimatedDuration: estimatedDuration ?? this.estimatedDuration,
       timeUnit: timeUnit ?? this.timeUnit,
       difficulty: difficulty ?? this.difficulty,
+      area: area ?? this.area,
     );
   }
 
@@ -321,4 +330,84 @@ class SubjectException implements Exception {
 
   @override
   String toString() => 'SubjectException: $message';
+}
+
+/// Área curricular de la materia — define qué prompt de IA usar y, a
+/// futuro, qué estilo visual aplicar (ej: formato "Solución" para
+/// problemas numéricos de Matemática). Se elige manualmente al crear
+/// la materia, sin depender de adivinar por el nombre.
+enum SubjectArea {
+  matematica,
+  comunicacion,
+  cienciasSociales,
+  cienciaYTecnologia,
+  ingles,
+  arteYCultura,
+  educacionFisica,
+  otra,
+}
+
+extension SubjectAreaExtension on SubjectArea {
+  String get displayName {
+    switch (this) {
+      case SubjectArea.matematica:
+        return 'Matemática';
+      case SubjectArea.comunicacion:
+        return 'Comunicación';
+      case SubjectArea.cienciasSociales:
+        return 'Ciencias Sociales';
+      case SubjectArea.cienciaYTecnologia:
+        return 'Ciencia y Tecnología';
+      case SubjectArea.ingles:
+        return 'Inglés';
+      case SubjectArea.arteYCultura:
+        return 'Arte y Cultura';
+      case SubjectArea.educacionFisica:
+        return 'Educación Física';
+      case SubjectArea.otra:
+        return 'Otra';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case SubjectArea.matematica:
+        return Icons.calculate;
+      case SubjectArea.comunicacion:
+        return Icons.menu_book;
+      case SubjectArea.cienciasSociales:
+        return Icons.public;
+      case SubjectArea.cienciaYTecnologia:
+        return Icons.science;
+      case SubjectArea.ingles:
+        return Icons.translate;
+      case SubjectArea.arteYCultura:
+        return Icons.palette;
+      case SubjectArea.educacionFisica:
+        return Icons.sports_soccer;
+      case SubjectArea.otra:
+        return Icons.category;
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case SubjectArea.matematica:
+        return Colors.indigo;
+      case SubjectArea.comunicacion:
+        return Colors.deepOrange;
+      case SubjectArea.cienciasSociales:
+        return Colors.brown;
+      case SubjectArea.cienciaYTecnologia:
+        return Colors.teal;
+      case SubjectArea.ingles:
+        return Colors.blue;
+      case SubjectArea.arteYCultura:
+        return Colors.pink;
+      case SubjectArea.educacionFisica:
+        return Colors.green;
+      case SubjectArea.otra:
+        return Colors.grey;
+    }
+  }
 }

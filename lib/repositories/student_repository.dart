@@ -20,6 +20,7 @@ abstract class StudentRepository {
     String? email,
     required String parentId,
     StudentGrade grade = StudentGrade.primaria,
+    int? gradeLevel,
     DateTime? birthDate,
     String? notes,
     StudentAvatar avatar = StudentAvatar.student1,

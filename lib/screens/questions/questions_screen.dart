@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/question_provider.dart';
+import '../../providers/question_set_provider.dart';
 import '../../providers/subject_provider.dart';
 import '../../models/question.dart';
 import '../../models/subject.dart';
 import '../../utils/app_theme.dart';
 import 'ai_generate_screen.dart';
 import 'question_form_screen.dart';
+import 'question_sets_screen.dart';
 
 class QuestionsScreen extends StatefulWidget {
   final String? subjectId;
@@ -28,6 +30,11 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   Subject? _selectedSubject;
   QuestionType? _filterType;
   QuestionDifficulty? _filterDifficulty;
+  QuestionPurpose? _filterPurpose;
+
+  // Modo de selección — para armar un QuestionSet (examen/práctica fijo)
+  bool _selectionMode = false;
+  final Set<String> _selectedQuestionIds = {};
 
   @override
   void initState() {
@@ -77,6 +84,18 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     return AppBar(
       title: const Text('Banco de Preguntas'),
       actions: [
+        IconButton(
+          tooltip: 'Mis Exámenes/Prácticas armados',
+          icon: const Icon(Icons.folder_special_outlined),
+          onPressed: _selectedSubject == null
+              ? null
+              : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => QuestionSetsScreen(subject: _selectedSubject!),
+                    ),
+                  ),
+        ),
         Consumer<QuestionProvider>(
           builder: (context, questionProvider, child) {
             if (questionProvider.stats != null) {
@@ -113,10 +132,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             _buildSubjectSelector(subjectProvider),
             _buildSearchBar(questionProvider),
             _buildFilters(),
+            _buildPurposeFilterRow(),
             _buildStatsSection(questionProvider),
             Expanded(
               child: _buildQuestionsList(questionProvider),
             ),
+            if (_selectionMode) _buildSelectionBar(),
           ],
         );
       },
@@ -401,6 +422,80 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     );
   }
 
+  /// Fila de filtro por Modo de uso (Práctica/Examen) + botón para activar
+  /// el modo de selección (armar un set fijo). Solo se puede seleccionar
+  /// cuando el filtro está en Práctica o Examen — así el set nunca mezcla
+  /// preguntas de ambos modos.
+  Widget _buildPurposeFilterRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildPurposeChip(null, 'Todos'),
+                  const SizedBox(width: 8),
+                  ...QuestionPurpose.values.map((p) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: _buildPurposeChip(p, p.displayName, icon: p.icon),
+                      )),
+                ],
+              ),
+            ),
+          ),
+          if (!_selectionMode)
+            IconButton(
+              tooltip: _filterPurpose == null
+                  ? 'Filtra por Práctica o Examen para armar un grupo'
+                  : 'Seleccionar preguntas para armar un grupo',
+              onPressed: _filterPurpose == null
+                  ? null
+                  : () => setState(() => _selectionMode = true),
+              icon: const Icon(Icons.playlist_add_check),
+            )
+          else
+            TextButton(
+              onPressed: () => setState(() {
+                _selectionMode = false;
+                _selectedQuestionIds.clear();
+              }),
+              child: const Text('Cancelar'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPurposeChip(QuestionPurpose? purpose, String label, {IconData? icon}) {
+    final isSelected = _filterPurpose == purpose;
+    final color = purpose?.color ?? AppTheme.primaryColor;
+    return ChoiceChip(
+      label: Text(label),
+      avatar: icon != null
+          ? Icon(icon, size: 16, color: isSelected ? color : Colors.grey[600])
+          : null,
+      showCheckmark: false,
+      selected: isSelected,
+      onSelected: (_) => setState(() {
+        _filterPurpose = purpose;
+        // Si dejas de filtrar por un modo específico, no tiene sentido
+        // seguir en modo selección (el set no puede mezclar modos)
+        if (purpose == null) {
+          _selectionMode = false;
+          _selectedQuestionIds.clear();
+        }
+      }),
+      selectedColor: color.withOpacity(0.2),
+      labelStyle: TextStyle(
+        color: isSelected ? color : Colors.grey[700],
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+    );
+  }
+
   Widget _buildStatsSection(QuestionProvider questionProvider) {
     if (questionProvider.stats == null) return const SizedBox.shrink();
 
@@ -532,13 +627,36 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         );
 
       case QuestionStatus.loaded:
+        final displayedQuestions = _filterPurpose == null
+            ? questionProvider.questions
+            : questionProvider.questions
+                .where((q) => q.appliesTo(_filterPurpose!))
+                .toList();
+
+        if (displayedQuestions.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.filter_alt_off, size: 56, color: Colors.grey[400]),
+                const SizedBox(height: 12),
+                Text(
+                  'No hay preguntas de ${_filterPurpose!.displayName.toLowerCase()} en esta materia',
+                  style: TextStyle(color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
         return RefreshIndicator(
           onRefresh: () async => _loadData(),
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: questionProvider.questions.length,
+            itemCount: displayedQuestions.length,
             itemBuilder: (context, index) {
-              final question = questionProvider.questions[index];
+              final question = displayedQuestions[index];
               return _buildQuestionCard(question);
             },
           ),
@@ -547,7 +665,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   }
 
   Widget _buildQuestionCard(Question question) {
-    return Card(
+    final card = Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ExpansionTile(
         leading: Container(
@@ -722,6 +840,182 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         ],
       ),
     );
+
+    if (!_selectionMode) return card;
+
+    final isSelected = _selectedQuestionIds.contains(question.id);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Checkbox(
+          value: isSelected,
+          onChanged: (_) => _toggleQuestionSelection(question.id),
+        ),
+        Expanded(child: card),
+      ],
+    );
+  }
+
+  void _toggleQuestionSelection(String questionId) {
+    setState(() {
+      if (_selectedQuestionIds.contains(questionId)) {
+        _selectedQuestionIds.remove(questionId);
+      } else {
+        _selectedQuestionIds.add(questionId);
+      }
+    });
+  }
+
+  Widget _buildSelectionBar() {
+    final purpose = _filterPurpose!;
+    final count = _selectedQuestionIds.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Icon(purpose.icon, color: purpose.color, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '$count pregunta${count == 1 ? '' : 's'} seleccionada${count == 1 ? '' : 's'}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: count > 0 ? purpose.color : Colors.grey[500],
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: count > 0 ? _showGenerateSetDialog : null,
+              icon: const Icon(Icons.save),
+              label: Text('Generar ${purpose.displayName}'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: purpose.color,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showGenerateSetDialog() async {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final purpose = _filterPurpose!;
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Generar ${purpose.displayName}'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_selectedQuestionIds.length} preguntas seleccionadas',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: titleController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Título *',
+                  hintText: purpose == QuestionPurpose.exam
+                      ? 'Ej: Examen Bimestral 1'
+                      : 'Ej: Práctica de repaso semanal',
+                  border: const OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'El título es requerido';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Descripción (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(dialogContext, true);
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final authProvider = context.read<AuthProvider>();
+    final questionSetProvider = context.read<QuestionSetProvider>();
+
+    final success = await questionSetProvider.createSet(
+      subjectId: _selectedSubject!.id,
+      createdBy: authProvider.currentUser!.id,
+      title: titleController.text.trim(),
+      description: descriptionController.text.trim().isEmpty
+          ? null
+          : descriptionController.text.trim(),
+      purpose: purpose,
+      questionIds: _selectedQuestionIds.toList(),
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() {
+        _selectionMode = false;
+        _selectedQuestionIds.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('"${titleController.text.trim()}" guardado correctamente'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(questionSetProvider.errorMessage ?? 'Error al guardar'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildInfoChip(String text, IconData icon, Color color) {
@@ -750,7 +1044,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   }
 
 Widget? _buildFloatingActionButton() {
-  if (_selectedSubject == null) return null;
+  if (_selectedSubject == null || _selectionMode) return null;
   return Column(
     mainAxisSize: MainAxisSize.min,
     children: [

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/question.dart';
+import '../models/subject.dart';
 
 /// Modelo temporal para preguntas generadas por IA
 /// antes de ser guardadas en Firestore
@@ -51,12 +52,18 @@ class AIQuestionService {
   // ─────────────────────────────────────────────
 
   /// Genera preguntas a partir de un tema usando Groq + Llama
-  static Future<List<AIGeneratedQuestion>> generateFromText({
+  static Future<
+      ({
+        List<AIGeneratedQuestion> questions,
+        int corrected,
+        int discarded
+      })> generateFromText({
     required String subjectName,
     required String topic,
     required int count,
     required QuestionDifficulty difficulty,
     required QuestionType type,
+    required SubjectArea area,
   }) async {
     if (_groqApiKey.isEmpty) {
       throw AIException('Groq API key no configurada');
@@ -69,6 +76,7 @@ class AIQuestionService {
       count: clampedCount,
       difficulty: difficulty,
       type: type,
+      area: area,
     );
 
     try {
@@ -92,7 +100,7 @@ class AIQuestionService {
             },
           ],
           'temperature': 0.7,
-          'max_tokens': 4000,
+          'max_tokens': 8000,
         }),
       );
 
@@ -116,12 +124,18 @@ class AIQuestionService {
 
   /// Analiza imagen e identifica el tema, luego genera preguntas NUEVAS
   /// adaptadas al grado y dificultad seleccionada
-  static Future<List<AIGeneratedQuestion>> generateFromImage({
+  static Future<
+      ({
+        List<AIGeneratedQuestion> questions,
+        int corrected,
+        int discarded
+      })> generateFromImage({
     required File imageFile,
     required String subjectName,
     required int count,
     required QuestionDifficulty difficulty,
     required String gradeLevel,
+    required SubjectArea area,
   }) async {
     if (_geminiApiKey.isEmpty) {
       throw AIException('Gemini API key no configurada');
@@ -140,6 +154,7 @@ class AIQuestionService {
       count: clampedCount,
       difficulty: difficulty,
       gradeLevel: gradeLevel,
+      area: area,
     );
 
     try {
@@ -193,6 +208,7 @@ class AIQuestionService {
     required int count,
     required QuestionDifficulty difficulty,
     required QuestionType type,
+    required SubjectArea area,
   }) {
     final difficultyText = {
       QuestionDifficulty.easy: 'fácil (nivel básico, conceptos fundamentales)',
@@ -212,7 +228,7 @@ class AIQuestionService {
     return '''
 Genera exactamente $count preguntas de $typeText sobre "$topic" para la materia "$subjectName".
 Dificultad: $difficultyText.
-
+${_mathVerificationBlock(area)}
 Responde ÚNICAMENTE con este JSON, sin texto adicional:
 
 {
@@ -221,7 +237,8 @@ Responde ÚNICAMENTE con este JSON, sin texto adicional:
       "texto": "¿Texto de la pregunta?",
       "tipo": "${_typeToString(type)}",
       "opciones": ["Opción A", "Opción B", "Opción C", "Opción D"],
-      "respuesta_correcta": "Opción A",
+      "valor_correcto": "Copia EXACTA de la opción correcta, idéntica a como aparece en \\"opciones\\"",
+      "respuesta_correcta": "Debe ser IDÉNTICO al campo valor_correcto — no un valor distinto",
       "explicacion": "Breve explicación de por qué es correcta",
       "tema": "$topic"
     }
@@ -232,8 +249,28 @@ Reglas importantes:
 - Para opción múltiple: exactamente 4 opciones, solo una correcta
 - Para verdadero/falso: opciones = ["Verdadero", "Falso"]
 - Para respuesta corta: opciones = []
+- "valor_correcto" y "respuesta_correcta" DEBEN ser el mismo texto exacto — nunca uno calculado y otro distinto
+- "valor_correcto" DEBE estar copiado literalmente de la lista "opciones", sin cambiar ni un carácter
 - La explicación debe ser breve (máximo 2 líneas)
 - Genera exactamente $count preguntas
+''';
+  }
+
+  /// Instrucción extra que se inyecta SOLO para materias del área
+  /// Matemática — pide a la IA verificar su propia aritmética paso a paso
+  /// antes de responder, para reducir errores de cálculo.
+  static String _mathVerificationBlock(SubjectArea area) {
+    if (area != SubjectArea.matematica) return '';
+    return '''
+
+⚠️ VERIFICACIÓN OBLIGATORIA (materia de Matemática) — sigue este orden exacto:
+1. Resuelve el ejercicio TÚ MISMO paso a paso, mostrando el cálculo completo.
+2. Anota el resultado final numérico que obtuviste.
+3. Construye las 4 opciones de modo que UNA de ellas sea exactamente ese resultado (las otras 3 deben ser distractores plausibles, no el resultado correcto).
+4. Copia ese resultado, EXACTO y sin cambiar nada, en los campos "valor_correcto" Y "respuesta_correcta".
+- NO generes primero las opciones al azar y luego "ajustes" la respuesta — el orden es: calcular → recién ahí elegir cuál opción es la correcta.
+- En el campo "explicacion", resume el cálculo en MÁXIMO 3 líneas cortas (esto reemplaza la regla general de 2 líneas, solo para esta materia) — prioriza mostrar los números clave del cálculo, no expliques con prosa larga.
+- Revisa la operación una segunda vez antes de responder — los errores aritméticos no son aceptables.
 ''';
   }
 
@@ -242,6 +279,7 @@ Reglas importantes:
     required int count,
     required QuestionDifficulty difficulty,
     required String gradeLevel,
+    required SubjectArea area,
   }) {
     final difficultyText = {
       QuestionDifficulty.easy: 'fácil (conceptos básicos y fundamentales)',
@@ -266,7 +304,7 @@ PASO 2 — Genera exactamente $count preguntas NUEVAS y ORIGINALES:
 - Dificultad: $difficultyText
 - Si el tema incluye matemáticas o fórmulas, crea ejercicios numéricos nuevos con valores distintos
 - Si el tema es conceptual, crea preguntas de comprensión y aplicación
-
+${_mathVerificationBlock(area)}
 PASO 3 — Formato de respuesta (JSON puro, sin texto adicional):
 
 {
@@ -276,7 +314,8 @@ PASO 3 — Formato de respuesta (JSON puro, sin texto adicional):
       "texto": "Texto de la pregunta nueva",
       "tipo": "multipleChoice",
       "opciones": ["Opción A", "Opción B", "Opción C", "Opción D"],
-      "respuesta_correcta": "Opción A",
+      "valor_correcto": "Copia EXACTA de la opción correcta, idéntica a como aparece en \\"opciones\\"",
+      "respuesta_correcta": "Debe ser IDÉNTICO al campo valor_correcto — no un valor distinto",
       "explicacion": "Por qué esta respuesta es correcta",
       "tema": "Subtema específico"
     }
@@ -287,6 +326,7 @@ Reglas estrictas:
 - Exactamente $count preguntas nuevas y originales
 - Exactamente 4 opciones por pregunta de opción múltiple
 - Solo una respuesta correcta por pregunta
+- "valor_correcto" y "respuesta_correcta" DEBEN ser el mismo texto exacto, copiado literalmente de "opciones"
 - Las preguntas deben evaluar comprensión y aplicación, no memorización de la imagen
 - Adapta el vocabulario al nivel $gradeLevel
 ''';
@@ -296,7 +336,15 @@ Reglas estrictas:
   // HELPERS PRIVADOS — Parsing
   // ─────────────────────────────────────────────
 
-  static List<AIGeneratedQuestion> _parseQuestionsFromJSON(
+  /// Devuelve las preguntas válidas + cuántas se corrigieron automáticamente
+  /// (la IA calculó bien pero etiquetó mal la opción correcta) y cuántas se
+  /// descartaron (ni el valor calculado ni la respuesta marcada existen
+  /// entre las opciones — imposible de corregir sin inventar datos).
+  static ({
+    List<AIGeneratedQuestion> questions,
+    int corrected,
+    int discarded
+  }) _parseQuestionsFromJSON(
     String content,
     QuestionDifficulty defaultDifficulty,
   ) {
@@ -316,8 +364,18 @@ Reglas estrictas:
       final json = jsonDecode(cleanContent) as Map<String, dynamic>;
       final preguntas = json['preguntas'] as List<dynamic>;
 
-      return preguntas.map((p) {
+      final validQuestions = <AIGeneratedQuestion>[];
+      int corrected = 0;
+      int discarded = 0;
+
+      for (final p in preguntas) {
         final pregunta = p as Map<String, dynamic>;
+        final textoPregunta = pregunta['texto'] as String?;
+        if (textoPregunta == null) {
+          discarded++;
+          continue;
+        }
+
         final tipoStr = pregunta['tipo'] as String? ?? 'multipleChoice';
         final tipo = _parseType(tipoStr);
         final opciones = (pregunta['opciones'] as List<dynamic>?)
@@ -325,19 +383,68 @@ Reglas estrictas:
                 .toList() ??
             [];
 
-        return AIGeneratedQuestion(
-          text: pregunta['texto'] as String,
+        var respuestaCorrecta = pregunta['respuesta_correcta'] as String? ?? '';
+        final valorCorrecto = pregunta['valor_correcto'] as String?;
+
+        // Solo verificamos contra "opciones" cuando realmente las hay
+        // (multipleChoice/trueFalse) — respuesta_corta no tiene opciones.
+        if (opciones.isNotEmpty) {
+          String? matchInOptions(String? value) {
+            if (value == null) return null;
+            final normalized = value.trim().toLowerCase();
+            for (final o in opciones) {
+              if (o.trim().toLowerCase() == normalized) return o;
+            }
+            return null;
+          }
+
+          final matchFromValorCorrecto = matchInOptions(valorCorrecto);
+          final matchFromRespuesta = matchInOptions(respuestaCorrecta);
+
+          if (matchFromValorCorrecto != null) {
+            // valor_correcto (el resultado del cálculo) SÍ está entre las
+            // opciones — confiamos en él por encima de respuesta_correcta,
+            // ya que es el que viene directo del cómputo paso a paso.
+            if (matchFromRespuesta != matchFromValorCorrecto) {
+              corrected++;
+            }
+            respuestaCorrecta = matchFromValorCorrecto;
+          } else if (matchFromRespuesta != null) {
+            // No hay valor_correcto usable, pero respuesta_correcta sí
+            // coincide con alguna opción — la dejamos tal cual.
+            respuestaCorrecta = matchFromRespuesta;
+          } else {
+            // Ninguno de los dos coincide con ninguna opción — no hay
+            // forma confiable de corregir esto sin inventar datos.
+            discarded++;
+            continue;
+          }
+        }
+
+        validQuestions.add(AIGeneratedQuestion(
+          text: textoPregunta,
           type: tipo,
           options: opciones,
-          correctAnswer: pregunta['respuesta_correcta'] as String,
+          correctAnswer: respuestaCorrecta,
           explanation: pregunta['explicacion'] as String?,
           topic: pregunta['tema'] as String?,
           difficulty: defaultDifficulty,
           selected: true,
-        );
-      }).toList();
+        ));
+      }
+
+      return (
+        questions: validQuestions,
+        corrected: corrected,
+        discarded: discarded
+      );
     } catch (e) {
       if (e is AIException) rethrow;
+      if (e is FormatException) {
+        throw AIException(
+            'La respuesta de la IA se cortó antes de terminar (probablemente por pedir demasiadas preguntas o explicaciones muy largas). '
+            'Intenta de nuevo con menos preguntas o una dificultad más simple.');
+      }
       throw AIException('Error al procesar respuesta de IA: $e');
     }
   }

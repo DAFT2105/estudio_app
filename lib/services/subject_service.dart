@@ -104,6 +104,7 @@ class SubjectService {
     TimeUnit? timeUnit,
     String? difficulty,
     List<String> assignedStudents = const [],
+    required SubjectArea area,
   }) async {
     try {
       // Firestore genera el ID — no usamos DateTime.millisecondsSinceEpoch
@@ -121,6 +122,7 @@ class SubjectService {
         timeUnit: timeUnit,
         difficulty: difficulty,
         assignedStudents: assignedStudents,
+        area: area,
       );
 
       await docRef.set(_toFirestore(subject));

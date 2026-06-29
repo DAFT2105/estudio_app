@@ -29,6 +29,7 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
   final _notesController = TextEditingController();
   
   StudentGrade _selectedGrade = StudentGrade.primaria;
+  int? _selectedGradeLevel;
   StudentAvatar _selectedAvatar = StudentAvatar.student1;
   DateTime? _selectedBirthDate;
   bool _isLoading = false;
@@ -55,6 +56,7 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
     _notesController.text = student.notes ?? '';
     
     _selectedGrade = student.grade;
+    _selectedGradeLevel = student.gradeLevel;
     _selectedAvatar = student.avatar;
     _selectedBirthDate = student.birthDate;
   }
@@ -338,9 +340,47 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
                 );
               }).toList(),
               onChanged: (value) {
-                if (value != null) setState(() => _selectedGrade = value);
+                if (value == null) return;
+                setState(() {
+                  _selectedGrade = value;
+                  // Si el nuevo grado no tiene niveles numéricos, se limpia.
+                  // Si SÍ tiene pero el nivel actual ya no es válido (ej:
+                  // tenía Secundaria 5° y cambia a Primaria), también se limpia.
+                  if (!value.hasNumericLevel ||
+                      (_selectedGradeLevel != null &&
+                          _selectedGradeLevel! > value.maxLevel)) {
+                    _selectedGradeLevel = null;
+                  }
+                });
               },
             ),
+
+            if (_selectedGrade.hasNumericLevel) ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                value: _selectedGradeLevel,
+                decoration: InputDecoration(
+                  labelText: '${_selectedGrade.displayName} — nivel *',
+                  prefixIcon: const Icon(Icons.bookmark_outline),
+                ),
+                hint: const Text('Selecciona el nivel'),
+                items: List.generate(_selectedGrade.maxLevel, (i) => i + 1)
+                    .map((level) => DropdownMenuItem(
+                          value: level,
+                          child: Text('$level°  ${_selectedGrade.displayName}'),
+                        ))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() => _selectedGradeLevel = value);
+                },
+                validator: (value) {
+                  if (value == null) {
+                    return 'Selecciona el nivel de ${_selectedGrade.displayName.toLowerCase()}';
+                  }
+                  return null;
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -519,6 +559,7 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           apellidos: apellidos,
           email: email.isEmpty ? null : email.toLowerCase(),
           grade: _selectedGrade,
+          gradeLevel: _selectedGrade.hasNumericLevel ? _selectedGradeLevel : null,
           avatar: _selectedAvatar,
           birthDate: _selectedBirthDate,
           notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
@@ -542,6 +583,7 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           email: email.isEmpty ? null : email.toLowerCase(),
           parentId: currentUser.id,
           grade: _selectedGrade,
+          gradeLevel: _selectedGrade.hasNumericLevel ? _selectedGradeLevel : null,
           avatar: _selectedAvatar,
           birthDate: _selectedBirthDate,
           notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),

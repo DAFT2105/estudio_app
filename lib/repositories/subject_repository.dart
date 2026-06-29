@@ -21,6 +21,7 @@ abstract class SubjectRepository {
     TimeUnit? timeUnit, // AGREGAR AQUÍ
     String? difficulty,
     List<String> assignedStudents = const [],
+    required SubjectArea area,
   });
   
   /// Actualizar materia existente

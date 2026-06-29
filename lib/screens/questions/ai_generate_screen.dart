@@ -34,6 +34,7 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
 
   // ── Flujo B — Por imagen (Gemini)
   File? _selectedImage;
+  File? _pendingCameraPhoto; // foto recién tomada, esperando "Aceptar" o "Tomar otra"
   int _imageQuestionCount = 10;
   QuestionDifficulty _imageDifficulty = QuestionDifficulty.medium;
   String _detectedGrade = 'primaria'; // grado detectado de los estudiantes
@@ -69,16 +70,22 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
           await studentService.getStudentsWithSubject(widget.subject.id);
 
       if (students.isNotEmpty) {
-        // Contar grados y tomar el más frecuente
-        final gradeCount = <StudentGrade, int>{};
+        // Contar combinaciones de (grado, nivel) — no solo el grado — y
+        // tomar la más frecuente, para poder ser específicos con la IA
+        // (ej: "primaria, 3er grado" en vez de solo "primaria").
+        final counts = <String, int>{};
+        final sample = <String, Student>{};
         for (final s in students) {
-          gradeCount[s.grade] = (gradeCount[s.grade] ?? 0) + 1;
+          final key = '${s.grade.toString().split('.').last}-${s.gradeLevel ?? 0}';
+          counts[key] = (counts[key] ?? 0) + 1;
+          sample[key] = s;
         }
-        final mostCommon = gradeCount.entries
-            .reduce((a, b) => a.value >= b.value ? a : b)
-            .key;
+        final mostCommonKey =
+            counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+        final mostCommonStudent = sample[mostCommonKey]!;
 
-        setState(() => _detectedGrade = _gradeToSpanish(mostCommon));
+        setState(() => _detectedGrade = _gradeToSpanish(
+            mostCommonStudent.grade, mostCommonStudent.gradeLevel));
       }
     } catch (_) {
       // Si falla, usar primaria por defecto
@@ -87,18 +94,21 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
     }
   }
 
-  String _gradeToSpanish(StudentGrade grade) {
+  String _gradeToSpanish(StudentGrade grade, int? gradeLevel) {
+    final levelSuffix = (grade.hasNumericLevel && gradeLevel != null)
+        ? ', $gradeLevel° grado'
+        : '';
     switch (grade) {
       case StudentGrade.preescolar:
-        return 'preescolar (3-6 años)';
+        return 'preescolar (3-6 años)$levelSuffix';
       case StudentGrade.primaria:
-        return 'primaria (6-12 años)';
+        return 'primaria (6-12 años)$levelSuffix';
       case StudentGrade.secundaria:
-        return 'secundaria (12-15 años)';
+        return 'secundaria (12-15 años)$levelSuffix';
       case StudentGrade.preparatoria:
-        return 'preparatoria (15-18 años)';
+        return 'preparatoria (15-18 años)$levelSuffix';
       case StudentGrade.universidad:
-        return 'universidad (18+ años)';
+        return 'universidad (18+ años)$levelSuffix';
     }
   }
 
@@ -108,35 +118,79 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Generar con IA'),
-        backgroundColor: widget.subject.color.color,
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
-        bottom: _generatedQuestions.isEmpty
-            ? TabBar(
+    return PopScope(
+      // Solo bloqueamos el back si hay preguntas generadas que aún no
+      // se guardaron — después de guardar, _saveSelectedQuestions ya
+      // hace su propio Navigator.pop(), así que no interfiere.
+      canPop: _generatedQuestions.isEmpty,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final shouldLeave = await _confirmDiscardDialog(
+          title: 'Regresar al lobby sin guardar los cambios',
+          confirmLabel: 'Regresar al lobby',
+        );
+        if (shouldLeave && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Generar con IA'),
+          backgroundColor: widget.subject.color.color,
+          foregroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.white),
+          bottom: _generatedQuestions.isEmpty
+              ? TabBar(
+                  controller: _tabController,
+                  indicatorColor: Colors.white,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white70,
+                  tabs: const [
+                    Tab(icon: Icon(Icons.edit_note), text: 'Por texto'),
+                    Tab(icon: Icon(Icons.image), text: 'Por imagen'),
+                  ],
+                )
+              : null,
+        ),
+        body: _generatedQuestions.isNotEmpty
+            ? _buildReviewScreen()
+            : TabBarView(
                 controller: _tabController,
-                indicatorColor: Colors.white,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                tabs: const [
-                  Tab(icon: Icon(Icons.edit_note), text: 'Por texto'),
-                  Tab(icon: Icon(Icons.image), text: 'Por imagen'),
+                children: [
+                  _buildTextTab(),
+                  _buildImageTab(),
                 ],
-              )
-            : null,
+              ),
       ),
-      body: _generatedQuestions.isNotEmpty
-          ? _buildReviewScreen()
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildTextTab(),
-                _buildImageTab(),
-              ],
-            ),
     );
+  }
+
+  Future<bool> _confirmDiscardDialog({String? title, String? confirmLabel}) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title ?? '¿Salir sin guardar?'),
+        content: Text(
+          'Tienes ${_generatedQuestions.length} pregunta${_generatedQuestions.length == 1 ? '' : 's'} generada${_generatedQuestions.length == 1 ? '' : 's'} sin guardar. '
+          'Si continúas, se perderán.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(confirmLabel ?? 'Salir sin guardar'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   // ─────────────────────────────────────────────
@@ -343,6 +397,7 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
                     avatar: Icon(p.icon,
                         size: 16,
                         color: isSelected ? p.color : Colors.grey[600]),
+                    showCheckmark: false,
                     selected: isSelected,
                     onSelected: (_) => setState(() => _purpose = p),
                     selectedColor: p.color.withOpacity(0.2),
@@ -386,10 +441,15 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
           child: Row(
             children: [
               TextButton(
-                onPressed: () => setState(() {
-                  _generatedQuestions = [];
-                  _detectedTopic = null;
-                }),
+                onPressed: () async {
+                  final shouldDiscard = await _confirmDiscardDialog();
+                  if (shouldDiscard && mounted) {
+                    setState(() {
+                      _generatedQuestions = [];
+                      _detectedTopic = null;
+                    });
+                  }
+                },
                 child: const Text('← Volver'),
               ),
               const Spacer(),
@@ -713,65 +773,158 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
   }
 
   Widget _buildImagePicker() {
-    return GestureDetector(
-      onTap: _pickImage,
-      child: Container(
+    // Estado 1: ya hay una imagen aceptada (de cámara o galería) — preview final
+    if (_selectedImage != null) {
+      return Container(
         height: 180,
         decoration: BoxDecoration(
           color: Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _selectedImage != null ? Colors.blue : Colors.grey[300]!,
-            width: _selectedImage != null ? 2 : 1,
-          ),
+          border: Border.all(color: Colors.blue, width: 2),
         ),
-        child: _selectedImage != null
-            ? Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      _selectedImage!,
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                _selectedImage!,
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedImage = null),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
                   ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: GestureDetector(
-                      onTap: () => setState(() => _selectedImage = null),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.close,
-                            color: Colors.white, size: 16),
-                      ),
-                    ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Estado 2: foto recién tomada con la cámara, esperando confirmación
+    if (_pendingCameraPhoto != null) {
+      return Column(
+        children: [
+          Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange, width: 2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                _pendingCameraPhoto!,
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _retakePhoto,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tomar otra'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _acceptPhoto,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Aceptar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
                   ),
-                ],
-              )
-            : Column(
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // Estado 3: nada elegido aún — dos opciones lado a lado
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: 3,
+          child: GestureDetector(
+            onTap: _pickFromGallery,
+            child: Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_photo_alternate,
-                      size: 48, color: Colors.grey[400]),
-                  const SizedBox(height: 12),
+                  Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey[400]),
+                  const SizedBox(height: 10),
                   Text('Toca para seleccionar imagen',
-                      style: TextStyle(color: Colors.grey[600])),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                   const SizedBox(height: 4),
                   Text(
                     'Foto de libro, pizarra o examen',
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
                 ],
               ),
-      ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 2,
+          child: GestureDetector(
+            onTap: _takePhoto,
+            child: Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.camera_alt, size: 36, color: AppTheme.primaryColor),
+                  const SizedBox(height: 10),
+                  Text('Tomar foto',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -852,33 +1005,12 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
   // ACCIONES
   // ─────────────────────────────────────────────
 
-  Future<void> _pickImage() async {
+  /// Galería — comportamiento de siempre, sin paso de confirmación
+  /// (la propia galería ya te deja ver/elegir la foto antes de confirmar).
+  Future<void> _pickFromGallery() async {
     final picker = ImagePicker();
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Tomar foto'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Seleccionar de galería'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (source == null) return;
-
     final picked = await picker.pickImage(
-      source: source,
+      source: ImageSource.gallery,
       maxWidth: 1920,
       maxHeight: 1920,
       imageQuality: 85,
@@ -890,6 +1022,37 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
         _errorMessage = null;
       });
     }
+  }
+
+  /// Cámara — abre directo, sin menú intermedio. La foto resultante queda
+  /// "pendiente" hasta que el usuario la acepte o decida tomar otra.
+  Future<void> _takePhoto() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 85,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _pendingCameraPhoto = File(picked.path);
+        _errorMessage = null;
+      });
+    }
+  }
+
+  void _retakePhoto() {
+    setState(() => _pendingCameraPhoto = null);
+    _takePhoto();
+  }
+
+  void _acceptPhoto() {
+    setState(() {
+      _selectedImage = _pendingCameraPhoto;
+      _pendingCameraPhoto = null;
+    });
   }
 
   Future<void> _generateFromText() async {
@@ -905,18 +1068,20 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
     });
 
     try {
-      final questions = await AIQuestionService.generateFromText(
+      final result = await AIQuestionService.generateFromText(
         subjectName: widget.subject.name,
         topic: _topicController.text.trim(),
         count: _questionCount,
         difficulty: _difficulty,
         type: _questionType,
+        area: widget.subject.area,
       );
 
       setState(() {
-        _generatedQuestions = questions;
+        _generatedQuestions = result.questions;
         _isGenerating = false;
       });
+      _showValidationFeedback(result.corrected, result.discarded);
     } on AIException catch (e) {
       setState(() {
         _errorMessage = e.message;
@@ -939,18 +1104,20 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
     });
 
     try {
-      final questions = await AIQuestionService.generateFromImage(
+      final result = await AIQuestionService.generateFromImage(
         imageFile: _selectedImage!,
         subjectName: widget.subject.name,
         count: _imageQuestionCount,
         difficulty: _imageDifficulty,
         gradeLevel: _detectedGrade,
+        area: widget.subject.area,
       );
 
       setState(() {
-        _generatedQuestions = questions;
+        _generatedQuestions = result.questions;
         _isGenerating = false;
       });
+      _showValidationFeedback(result.corrected, result.discarded);
     } on AIException catch (e) {
       setState(() {
         _errorMessage = e.message;
@@ -962,6 +1129,32 @@ class _AIGenerateScreenState extends State<AIGenerateScreen>
         _isGenerating = false;
       });
     }
+  }
+
+  /// Muestra un aviso si la app tuvo que corregir o descartar preguntas
+  /// por inconsistencias detectadas entre el cálculo de la IA y la
+  /// respuesta que marcó como correcta.
+  void _showValidationFeedback(int corrected, int discarded) {
+    if (corrected == 0 && discarded == 0) return;
+
+    final parts = <String>[];
+    if (corrected > 0) {
+      parts.add(
+          '$corrected pregunta${corrected == 1 ? '' : 's'} corregida${corrected == 1 ? '' : 's'} automáticamente');
+    }
+    if (discarded > 0) {
+      parts.add(
+          '$discarded descartada${discarded == 1 ? '' : 's'} por inconsistencias');
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            'Revisión automática: ${parts.join(' y ')}. Aun así, revisa las preguntas antes de guardar.'),
+        backgroundColor: Colors.orange[700],
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   Future<void> _saveSelectedQuestions() async {

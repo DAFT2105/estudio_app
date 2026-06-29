@@ -39,6 +39,7 @@ class SubjectRepositoryImpl implements SubjectRepository {
     TimeUnit? timeUnit,
     String? difficulty,
     List<String> assignedStudents = const [],
+    required SubjectArea area,
   }) async {
     try {
       if (name.trim().isEmpty) {
@@ -77,6 +78,7 @@ class SubjectRepositoryImpl implements SubjectRepository {
         timeUnit: timeUnit,
         difficulty: difficulty,
         assignedStudents: assignedStudents,
+        area: area,
       );
     } on SubjectException {
       rethrow;

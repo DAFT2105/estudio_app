@@ -66,6 +66,7 @@ class SubjectProvider extends ChangeNotifier {
     TimeUnit? timeUnit, // CORREGIDO
     String? difficulty,
     List<String> assignedStudents = const [],
+    required SubjectArea area,
   }) async {
     try {
       _clearError();
@@ -80,6 +81,7 @@ class SubjectProvider extends ChangeNotifier {
         timeUnit: timeUnit, // CORREGIDO
         difficulty: difficulty,
         assignedStudents: assignedStudents,
+        area: area,
       );
 
       // Agregar a la lista local

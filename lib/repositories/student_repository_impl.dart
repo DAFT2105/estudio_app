@@ -35,6 +35,7 @@ class StudentRepositoryImpl implements StudentRepository {
     String? email,
     required String parentId,
     StudentGrade grade = StudentGrade.primaria,
+    int? gradeLevel,
     DateTime? birthDate,
     String? notes,
     StudentAvatar avatar = StudentAvatar.student1,
@@ -68,6 +69,16 @@ class StudentRepositoryImpl implements StudentRepository {
           throw StudentException('La edad no puede ser mayor a 25 años');
         }
       }
+      if (gradeLevel != null) {
+        if (!grade.hasNumericLevel) {
+          throw StudentException(
+              '${grade.displayName} no tiene niveles numéricos');
+        }
+        if (gradeLevel < 1 || gradeLevel > grade.maxLevel) {
+          throw StudentException(
+              'El nivel de ${grade.displayName} debe estar entre 1 y ${grade.maxLevel}');
+        }
+      }
 
       return await _studentService.createStudent(
         nombres: nombres.trim(),
@@ -75,6 +86,7 @@ class StudentRepositoryImpl implements StudentRepository {
         email: email?.trim(),
         parentId: parentId,
         grade: grade,
+        gradeLevel: gradeLevel,
         birthDate: birthDate,
         notes: notes?.trim(),
         avatar: avatar,
@@ -94,6 +106,16 @@ class StudentRepositoryImpl implements StudentRepository {
       }
       if (student.apellidos.trim().isEmpty) {
         throw StudentException('Los apellidos del estudiante son requeridos');
+      }
+      if (student.gradeLevel != null) {
+        if (!student.grade.hasNumericLevel) {
+          throw StudentException(
+              '${student.grade.displayName} no tiene niveles numéricos');
+        }
+        if (student.gradeLevel! < 1 || student.gradeLevel! > student.grade.maxLevel) {
+          throw StudentException(
+              'El nivel de ${student.grade.displayName} debe estar entre 1 y ${student.grade.maxLevel}');
+        }
       }
       // El email es opcional — solo se valida si está presente
       if (student.email != null &&

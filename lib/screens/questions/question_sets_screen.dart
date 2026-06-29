@@ -123,6 +123,7 @@ class _QuestionSetsScreenState extends State<QuestionSetsScreen> {
       avatar: icon != null
           ? Icon(icon, size: 16, color: isSelected ? color : Colors.grey[600])
           : null,
+      showCheckmark: false,
       selected: isSelected,
       onSelected: (_) => setState(() => _filterPurpose = purpose),
       selectedColor: color.withOpacity(0.2),

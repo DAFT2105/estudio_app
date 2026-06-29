@@ -14,6 +14,7 @@ class Student {
   final bool isActive;
   final List<String> assignedSubjects; // IDs de materias asignadas
   final StudentGrade grade; // Grado escolar
+  final int? gradeLevel; // Nivel numérico dentro del grado (1-6 Primaria, 1-5 Secundaria)
   final DateTime? birthDate;
   final String? notes; // Notas adicionales del padre
   final StudentAvatar avatar; // Avatar visual para el estudiante
@@ -30,6 +31,7 @@ class Student {
     this.isActive = true,
     this.assignedSubjects = const [],
     this.grade = StudentGrade.primaria,
+    this.gradeLevel,
     this.birthDate,
     this.notes,
     this.avatar = StudentAvatar.student1,
@@ -39,6 +41,15 @@ class Student {
   /// Se mantiene como getter (no como campo) para que todas las pantallas
   /// que ya usan `student.name` sigan funcionando sin cambios.
   String get name => '$nombres $apellidos'.trim();
+
+  /// "Primaria 3°" / "Secundaria 5°" si tiene nivel, o solo "Preescolar"
+  /// si el grado no se subdivide en niveles numéricos.
+  String get gradeDisplayWithLevel {
+    if (grade.hasNumericLevel && gradeLevel != null) {
+      return '${grade.displayName} $gradeLevel°';
+    }
+    return grade.displayName;
+  }
 
   // Obtener edad calculada
   int? get age {
@@ -103,6 +114,7 @@ class Student {
         (e) => e.toString().split('.').last == json['grade'],
         orElse: () => StudentGrade.primaria,
       ),
+      gradeLevel: json['gradeLevel'] as int?,
       birthDate: json['birthDate'] != null
           ? DateTime.parse(json['birthDate'] as String)
           : null,
@@ -129,6 +141,7 @@ class Student {
       'isActive': isActive,
       'assignedSubjects': assignedSubjects,
       'grade': grade.toString().split('.').last,
+      'gradeLevel': gradeLevel,
       'birthDate': birthDate?.toIso8601String(),
       'notes': notes,
       'avatar': avatar.toString().split('.').last,
@@ -136,6 +149,12 @@ class Student {
   }
 
   // Crear copia con cambios
+  // Sentinel para distinguir "no pasaste este parámetro" de "lo pasaste
+  // explícitamente como null" — necesario para poder LIMPIAR gradeLevel
+  // (ej: al cambiar de Primaria a Preescolar) sin afectar otras llamadas
+  // a copyWith que no tocan este campo.
+  static const _unset = Object();
+
   Student copyWith({
     String? id,
     String? nombres,
@@ -148,6 +167,7 @@ class Student {
     bool? isActive,
     List<String>? assignedSubjects,
     StudentGrade? grade,
+    Object? gradeLevel = _unset,
     DateTime? birthDate,
     String? notes,
     StudentAvatar? avatar,
@@ -164,6 +184,8 @@ class Student {
       isActive: isActive ?? this.isActive,
       assignedSubjects: assignedSubjects ?? this.assignedSubjects,
       grade: grade ?? this.grade,
+      gradeLevel:
+          identical(gradeLevel, _unset) ? this.gradeLevel : gradeLevel as int?,
       birthDate: birthDate ?? this.birthDate,
       notes: notes ?? this.notes,
       avatar: avatar ?? this.avatar,
@@ -195,6 +217,23 @@ enum StudentGrade {
 }
 
 extension StudentGradeExtension on StudentGrade {
+  /// ¿Este grado se subdivide en niveles numéricos (1°, 2°, ...)?
+  /// Solo Primaria y Secundaria — el resto no aplica.
+  bool get hasNumericLevel =>
+      this == StudentGrade.primaria || this == StudentGrade.secundaria;
+
+  /// Nivel máximo válido para este grado (0 si no aplica)
+  int get maxLevel {
+    switch (this) {
+      case StudentGrade.primaria:
+        return 6;
+      case StudentGrade.secundaria:
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
   String get displayName {
     switch (this) {
       case StudentGrade.preescolar:
